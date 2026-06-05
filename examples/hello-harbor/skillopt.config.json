@@ -5,14 +5,16 @@
   "rollout": {
     "backend": "docker",
     "agent": "claude-code",
-    "model": "anthropic/claude-opus-4-7",
-    "image": "ubuntu:24.04",
+    "model": "anthropic/claude-opus-4-8",
     "setup": {
-      "apt": ["jq"],
-      "commands": []
+      "env": ["ANTHROPIC_API_KEY"]
     }
   },
-  "splits": { "train": [], "selection": [], "test": [] },
+  "splits": {
+    "train": ["capital-france", "ceo-acme", "founded-globex"],
+    "selection": ["capital-japan", "mascot-pip"],
+    "test": ["capital-spain"]
+  },
   "editBudget": 3,
   "minEditBudget": 1,
   "lrSchedule": "cosine",

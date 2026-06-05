@@ -185,6 +185,10 @@ export default function skilloptExtension(pi: ExtensionAPI) {
         taskIds: ids,
         split: args.split,
         env: cfg.rollout,
+        // Keep Harbor's job output (incl. failing trajectories) in the session
+        // dir so the agent can read it and `/skillopt clear` can remove it.
+        jobsDir: path.join(dir, "skillopt.jobs"),
+        attempts: cfg.selectionSamples && args.split === "selection" ? cfg.selectionSamples : 1,
         sampleFailures: args.sample_failures,
       });
 

@@ -26,7 +26,7 @@ Ask (or infer from context). The first two are about *what* to optimize; the res
 **The rollout environment** (this becomes `skillopt.config.json → rollout`)
 3. **Container backend** — where each task runs: `docker` (local), `daytona`, `e2b`, `runloop`, `modal`, … Pick what Harbor is configured for.
 4. **Agent** — the harness that executes tasks: `claude-code`, `codex`, `pi`, `opencode`, …
-5. **Model** — e.g. `anthropic/claude-opus-4-7`, `openai/gpt-5.5`.
+5. **Model** — e.g. `anthropic/claude-opus-4-8`, `openai/gpt-5.5`.
 6. **Base image** — container image or Dockerfile the rollout starts from.
 7. **Preloads** — everything the agent needs *before* it works a task:
    - **other skills** it depends on (paths / repo refs / registry ids),
@@ -47,7 +47,7 @@ Write these to `skillopt.config.json` (schema in the repo README). Example:
   "rollout": {
     "backend": "e2b",
     "agent": "claude-code",
-    "model": "anthropic/claude-opus-4-7",
+    "model": "anthropic/claude-opus-4-8",
     "image": "ubuntu:24.04",
     "setup": {
       "skills": ["./skills/dep-skill/SKILL.md"],
@@ -63,6 +63,8 @@ Write these to `skillopt.config.json` (schema in the repo README). Example:
   "maxSteps": 40
 }
 ```
+
+> **Where preloads land:** Harbor has no run-time preload hook, so `skillopt-taskpack` bakes the base image + `apt`/`npm`/`pip`/`commands` into each task's `environment/Dockerfile` (run at *build* time). Only the **backend**, **agent**, **model**, **companion skills**, and **secret names** are applied per-rollout. Fill in the preloads here — but expect them to show up in the generated task Dockerfiles, not as a separate install step.
 
 ## Step 2 — get a task pack
 

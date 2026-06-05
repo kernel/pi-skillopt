@@ -6,7 +6,7 @@
 
 A plugin for **[pi](https://pi.dev/)**. Inspired in structure by [pi-autoresearch](https://github.com/davebcn87/pi-autoresearch): a domain-agnostic **extension** provides the machinery, **skills** encode the workflow. Here the optimization target is a single skill document, the benchmark is a Harbor rollout, and "keep/revert" is SkillOpt's validation gate.
 
-> **Status: v0 scaffold.** The loop/gate/splits/Harbor-seam/jsonl logic is real and unit-testable; the **skills are usable today** (they're just instructions an agent follows). The extension's pi event wiring and the exact `harbor run` flags are shaped from upstream and need a reconciliation pass against a live pi + Harbor — search the code for `RECONCILE:` and `ADAPTER:`. Not yet runtime-validated end to end.
+> **Status: v0.** The loop/gate/splits/Harbor-seam/jsonl logic is real and unit-testable; the **skills are usable today** (they're just instructions an agent follows). The **Harbor seam is pinned to Harbor 0.13.x** — it emits a `JobConfig`, runs `harbor run --config`, and reads rewards from the job's `result.json`; the example task pack is validated against Harbor's own task loader. What's left: the extension's **pi event wiring** is shaped from upstream and needs a reconciliation pass against a live pi build — search the code for `RECONCILE:`. Not yet validated end-to-end against a live pi plus a green Harbor trial.
 
 ---
 
@@ -52,7 +52,7 @@ The agent walks you through:
 2. **The rollout env** — *how rollouts run*:
    - **backend**: `docker` · `daytona` · `e2b` · `runloop` · `modal` · …
    - **agent**: `claude-code` · `codex` · `pi` · `opencode` · …
-   - **model**: e.g. `anthropic/claude-opus-4-7`
+   - **model**: e.g. `anthropic/claude-opus-4-8`
    - **preloads**: other skills, npm/apt/pip packages, CLIs, env/secrets (names only), setup commands
 3. **Task pack** — if you don't have one, `/skill:skillopt-taskpack` generates it *from the skill itself* (derives tasks + objective verifiers), then pauses for your review.
 4. **Baseline + loop** — `run_rollout` → reflect on failures → edit → `log_step` (gate) → repeat.
@@ -76,7 +76,7 @@ The agent walks you through:
 - **Splits** (`splits.ts`) are enforced: you reflect on `train`, the gate scores `selection`, and `test` is touched once by finalize. This is what stops the skill overfitting the eval.
 
 ### The one integration seam
-`extensions/pi-skillopt/harbor.ts` is the only file that knows Harbor. It builds `harbor run` from the rollout env, runs it, and parses verifier rewards into scores. Swapping eval substrates later = rewriting one file.
+`extensions/pi-skillopt/harbor.ts` is the only file that knows Harbor. From the rollout env it builds a Harbor `JobConfig` (the candidate skill injected via `agents[].skills`, the split's tasks listed in `tasks[]`), runs `harbor run --config`, then reads each trial's verifier rewards from the job's `result.json` and aggregates them into `hard`/`soft` scores. Swapping eval substrates later = rewriting one file.
 
 ## Session files
 
@@ -92,7 +92,7 @@ The agent walks you through:
 No assumptions about what the skill does. Skill, task pack, agent, model, backend, and verifiers are all user-supplied. `examples/hello-harbor/` runs the whole shape on a toy skill with zero domain code.
 
 ## Roadmap (v1+)
-- reconcile pi event wiring (idle auto-loop, compaction-resume, before-agent-start) and `harbor run` flags against live versions
+- reconcile the pi event wiring (idle auto-loop, compaction-resume, before-agent-start) against a live pi build (the Harbor seam is already pinned to Harbor 0.13.x)
 - slow-update / meta-skill (epoch-boundary guidance into a protected region)
 - autonomous edit-budget control; parallel rollouts; a live `/skillopt export` dashboard
 - a separate optimizer model option (default keeps pi itself as the optimizer)
