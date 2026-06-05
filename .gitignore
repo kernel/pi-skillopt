@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+.pi/
+# session artifacts created during a run
+skillopt.jsonl
+skillopt.ideas.md
+runs/
