@@ -6,7 +6,7 @@
 
 A plugin for **[pi](https://pi.dev/)**. Inspired in structure by [pi-autoresearch](https://github.com/davebcn87/pi-autoresearch): a domain-agnostic **extension** provides the machinery, **skills** encode the workflow. Here the optimization target is a single skill document, the benchmark is a Harbor rollout, and "keep/revert" is SkillOpt's validation gate.
 
-> **Status: v0.** The loop/gate/splits/Harbor-seam/jsonl logic is real and unit-testable; the **skills are usable today** (they're just instructions an agent follows). The **Harbor seam is validated end-to-end against a live Harbor run on the e2b backend** — `run_rollout` builds the `JobConfig`, runs `harbor run --config`, and reads each trial's rewards from its `result.json`, producing correct `hard`/`soft` scores. Proven on `examples/hello-harbor` with both the `oracle` agent and a real **`claude-code`** agent (Opus 4.8) that installs itself in the sandbox, registers the injected skill, and uses it (outcome + adherence both 1.0). What's left: the extension's **pi event wiring** is shaped from upstream and needs a reconciliation pass against a live pi build — search the code for `RECONCILE:`.
+> **Status: v0.** The loop/gate/splits/Harbor-seam/jsonl logic is real and unit-testable; the **skills are usable today** (they're just instructions an agent follows). The **Harbor seam is validated end-to-end against a live Harbor run on the e2b backend** — `run_rollout` builds the `JobConfig`, runs `harbor run --config`, and reads each trial's rewards from its `result.json`, producing correct `hard`/`soft` scores. Proven on `examples/hello-harbor` with both the `oracle` agent and a real **`claude-code`** agent (Opus 4.8) that installs itself in the sandbox, registers the injected skill, and uses it (outcome + adherence both 1.0). The **extension wiring is reconciled against the real `@mariozechner/pi-coding-agent` API** — it typechecks clean (`npm run typecheck`) and has an offline test suite (`npm test`: mock-API registration + gate/splits/harbor/compaction units, 20 tests) gated in CI. What's left is one live smoke session in pi to confirm the runtime fires the events and the agent drives the loop end to end.
 
 ---
 
@@ -102,7 +102,7 @@ The agent walks you through:
 No assumptions about what the skill does. Skill, task pack, agent, model, backend, and verifiers are all user-supplied. `examples/hello-harbor/` runs the whole shape on a toy skill with zero domain code.
 
 ## Roadmap (v1+)
-- reconcile the pi event wiring (idle auto-loop, compaction-resume, before-agent-start) against a live pi build (the Harbor seam is already pinned to Harbor 0.13.x)
+- one live pi smoke session to confirm the runtime fires the wired events (idle auto-loop, compaction-resume, before-agent-start) and the agent drives the loop end to end (the wiring already typechecks against the real pi API and is unit-tested)
 - slow-update / meta-skill (epoch-boundary guidance into a protected region)
 - autonomous edit-budget control; parallel rollouts; a live `/skillopt export` dashboard
 - a separate optimizer model option (default keeps pi itself as the optimizer)
