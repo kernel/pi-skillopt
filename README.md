@@ -16,9 +16,25 @@ A plugin for **[pi](https://pi.dev/)**. Inspired in structure by [pi-autoresearc
 
 ## Install
 
+No npm publish required — pi installs packages straight from git or a local path:
+
 ```bash
-pi install npm:pi-skillopt        # once published
+# from GitHub — private repo, so SSH (uses your configured keys):
+pi install git:git@github.com:kernel/pi-skillopt@main
+# HTTPS works too (needs a git credential for the private repo):
+pi install git:github.com/kernel/pi-skillopt@main
+
+# from a local checkout — best for development, no copy:
+git clone git@github.com:kernel/pi-skillopt && pi install ./pi-skillopt
+
+# try it for a single run without installing:
+pi -e git:git@github.com:kernel/pi-skillopt
 ```
+
+The git ref pins to a tag/commit/branch; `pi update` reconciles it. To share with a
+team, `pi install -l …` writes it to project settings (`.pi/settings.json`) and pi
+auto-installs on startup once the project is trusted. (`pi install npm:pi-skillopt`
+also works if it's ever published.)
 
 Requires the Harbor CLI for rollouts: `uv tool install harbor`.
 
@@ -33,7 +49,7 @@ You arrive with just a skill.
 The agent walks you through:
 
 1. **The skill** — which `SKILL.md` to optimize.
-2. **The rollout env** — *how rollouts run* (the part people forget):
+2. **The rollout env** — *how rollouts run*:
    - **backend**: `docker` · `daytona` · `e2b` · `runloop` · `modal` · …
    - **agent**: `claude-code` · `codex` · `pi` · `opencode` · …
    - **model**: e.g. `anthropic/claude-opus-4-7`
