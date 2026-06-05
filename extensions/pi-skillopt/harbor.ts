@@ -16,8 +16,10 @@
 //   - the sandbox backend is `environment.type`.
 //   - tasks are listed explicitly in `tasks[]` (one dir per task), which is how
 //     a split is expressed.
-//   - results land in `<jobs_dir>/<job_name>/result.json` (a JobResult); each
-//     `trial_results[i].verifier_result.rewards` is that task's reward map.
+//   - results: the job-level `<jobs_dir>/<job_name>/result.json` holds only
+//     aggregate stats; the full per-trial result (with
+//     `verifier_result.rewards`) is written to `<job>/<trial_name>/result.json`,
+//     one per attempted trial — that's what we read back.
 //
 // Run-time vs build-time split: this file uses only the run-time half of the
 // rollout env (backend, agent, model, companion skills, secrets). The build-time
@@ -76,7 +78,7 @@ export interface HarborJobConfig {
   };
   agents: Array<{
     name: string;
-    model_name: string;
+    model_name?: string;
     skills: string[];
     env?: Record<string, string>;
   }>;
@@ -113,7 +115,7 @@ export function buildJobConfig(req: RolloutRequest, skillDir: string): HarborJob
     agents: [
       {
         name: String(env.agent),
-        model_name: env.model,
+        ...(env.model ? { model_name: env.model } : {}),
         skills: [skillDir, ...companions],
         ...(agentEnv ? { env: agentEnv } : {}),
       },
@@ -160,12 +162,10 @@ export async function runRollout(req: RolloutRequest): Promise<RolloutResult> {
   await spawnHarbor(bin, ["run", "--config", cfgPath], (req.timeoutSeconds ?? 1800) * 1000);
 
   const jobDir = path.join(jobsDir, jobName);
-  const resultPath = path.join(jobDir, "result.json");
-  if (!fs.existsSync(resultPath)) {
-    throw new Error(`harbor wrote no result.json at ${resultPath} (the job failed before producing results)`);
+  if (!fs.existsSync(path.join(jobDir, "result.json"))) {
+    throw new Error(`harbor wrote no result.json under ${jobDir} (the job failed before producing results)`);
   }
-  const raw = JSON.parse(fs.readFileSync(resultPath, "utf-8"));
-  const perTask = parseJobResult(raw, {
+  const perTask = parseTrialResults(collectTrialResults(jobDir), {
     jobDir,
     passThreshold: req.passThreshold ?? 1,
     primaryReward: req.primaryReward,
@@ -184,25 +184,50 @@ export interface ParseOpts {
   primaryReward?: string;
 }
 
+type TrialResult = Record<string, any>;
+
 /**
- * Turn a Harbor JobResult into PerTaskResult[] — one entry per trial (so with
- * n_attempts > 1 a task appears once per attempt, making the split-level mean a
- * pass@1 average). Errored trials count as hard 0 / soft 0.
+ * Read every per-trial result.json under the job dir. Harbor writes the
+ * job-level result.json WITHOUT trial_results (it's `exclude_trial_results`);
+ * the full TrialResult — including verifier_result.rewards — lives in
+ * `<jobDir>/<trial_name>/result.json`, one per attempted trial.
  */
-export function parseJobResult(raw: unknown, opts: ParseOpts): PerTaskResult[] {
-  const trials = (raw as any)?.trial_results;
-  if (!Array.isArray(trials)) {
-    throw new Error("harbor result.json has no trial_results array (unexpected JobResult shape)");
+export function collectTrialResults(jobDir: string): TrialResult[] {
+  const out: TrialResult[] = [];
+  for (const entry of fs.readdirSync(jobDir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+    if (!entry.isDirectory()) continue;
+    const p = path.join(jobDir, entry.name, "result.json");
+    if (!fs.existsSync(p)) continue;
+    try {
+      out.push(JSON.parse(fs.readFileSync(p, "utf-8")));
+    } catch {
+      // A single unreadable trial result shouldn't abort the whole rollout.
+    }
   }
-  return trials.map((t: any): PerTaskResult => {
-    const taskId = String(t.task_name ?? t.task_id?.path ?? "unknown");
+  return out;
+}
+
+/**
+ * Turn per-trial results into PerTaskResult[] — one entry per trial (so with
+ * n_attempts > 1 a task appears once per attempt, making the split-level mean a
+ * pass@1 average). Errored trials (no verifier rewards) count as hard 0 / soft 0.
+ */
+export function parseTrialResults(trials: TrialResult[], opts: ParseOpts): PerTaskResult[] {
+  return trials.map((t): PerTaskResult => {
     const rewards = normalizeRewards(t?.verifier_result?.rewards);
     const values = Object.values(rewards);
     const soft = values.length ? clamp01(mean(values)) : 0;
     const hard: 0 | 1 = isPass(rewards, opts) ? 1 : 0;
     const trajectory = t.trial_name ? path.join(opts.jobDir, String(t.trial_name)) : undefined;
-    return { taskId, hard, soft, rewards, trajectory };
+    return { taskId: taskIdOf(t), hard, soft, rewards, trajectory };
   });
+}
+
+/** The split id is the task directory name; `task_name` is the task.toml org/name. */
+function taskIdOf(t: TrialResult): string {
+  const p = t?.task_id?.path;
+  if (typeof p === "string" && p) return path.basename(p);
+  return String(t?.task_name ?? "unknown");
 }
 
 // --- helpers ---------------------------------------------------------------

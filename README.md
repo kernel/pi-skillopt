@@ -6,7 +6,7 @@
 
 A plugin for **[pi](https://pi.dev/)**. Inspired in structure by [pi-autoresearch](https://github.com/davebcn87/pi-autoresearch): a domain-agnostic **extension** provides the machinery, **skills** encode the workflow. Here the optimization target is a single skill document, the benchmark is a Harbor rollout, and "keep/revert" is SkillOpt's validation gate.
 
-> **Status: v0.** The loop/gate/splits/Harbor-seam/jsonl logic is real and unit-testable; the **skills are usable today** (they're just instructions an agent follows). The **Harbor seam is pinned to Harbor 0.13.x** — it emits a `JobConfig`, runs `harbor run --config`, and reads rewards from the job's `result.json`; the example task pack is validated against Harbor's own task loader. What's left: the extension's **pi event wiring** is shaped from upstream and needs a reconciliation pass against a live pi build — search the code for `RECONCILE:`. Not yet validated end-to-end against a live pi plus a green Harbor trial.
+> **Status: v0.** The loop/gate/splits/Harbor-seam/jsonl logic is real and unit-testable; the **skills are usable today** (they're just instructions an agent follows). The **Harbor seam is validated end-to-end against a live Harbor run on the e2b backend** — `run_rollout` builds the `JobConfig`, runs `harbor run --config`, and reads each trial's rewards from its `result.json`, producing correct `hard`/`soft` scores (proven with the `oracle` agent on `examples/hello-harbor`). What's left: the extension's **pi event wiring** is shaped from upstream and needs a reconciliation pass against a live pi build — search the code for `RECONCILE:`.
 
 ---
 
@@ -36,7 +36,17 @@ team, `pi install -l …` writes it to project settings (`.pi/settings.json`) an
 auto-installs on startup once the project is trusted. (`pi install npm:pi-skillopt`
 also works if it's ever published.)
 
-Requires the Harbor CLI for rollouts: `uv tool install harbor`.
+Requires the Harbor CLI for rollouts: `uv tool install harbor`. For a remote
+backend (recommended — and the one this seam is validated against), install the
+extra and export your key, e.g. e2b: `uv tool install 'harbor[e2b]'` +
+`export E2B_API_KEY=…`.
+
+> **e2b gotchas (Harbor 0.13.x):** Harbor's e2b adapter hard-codes a 24-hour
+> sandbox lifetime, which the e2b **hobby tier rejects** (1-hour cap) with
+> `400: Timeout cannot be greater than 1 hours` — use a Pro-tier key, or cap
+> `timeout` in `harbor/environments/e2b.py`. Also, e2b's Dockerfile parser warns
+> `Unsupported instruction: COMMENT` on `#` comment lines — harmless, the
+> template still builds.
 
 ## Use it
 
