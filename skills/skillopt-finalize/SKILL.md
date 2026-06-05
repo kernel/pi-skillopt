@@ -1,0 +1,39 @@
+---
+name: skillopt-finalize
+description: Close out a skillopt run — measure the optimized skill on the held-out test split, produce best_skill.md, and emit a clean diff + report against the original skill. Use when a skillopt loop has plateaued or the user asks to "finalize", "wrap up the skillopt run", or "get the final number".
+---
+
+# skillopt — finalize
+
+Turn a noisy optimization run into one honest number and one clean artifact.
+
+The loop only ever touched the **train** and **selection** splits. `test` has been off limits — finalize is the *only* time it's scored, so the headline number isn't overfit to the gate.
+
+## Steps
+
+1. **Confirm the run is done.** The selection score should have plateaued (several consecutive rejects, or `maxSteps` reached). If it's still climbing, keep looping instead.
+
+2. **Score the seed on test (baseline).** Check out the original skill (the seed) and `run_rollout('test')`. Record `hard`/`soft`. This is the "before".
+
+3. **Score `best_skill.md` on test.** Put `best_skill.md` in place and `run_rollout('test')`. Record `hard`/`soft`. This is the "after". Run each a few times if the env is noisy and report the mean ± spread.
+
+4. **Write the report** (`skillopt.report.md`):
+   - **Headline:** test `hard` seed → best (absolute + %), and the same for `soft`.
+   - **Selection trajectory:** baseline → best selection score and the number of accepted vs rejected edits (from `skillopt.jsonl`).
+   - **What changed:** summarize the accepted edits as a short changelog (from the snapshots / jsonl `edit` fields).
+   - **Cost:** token/$ and wall-clock spend of the run (rollouts × tasks × steps), so the reader can judge whether the lift was worth it.
+   - **Honesty notes:** any caveats — small test split, noisy verifier, a single benchmark, edits that look fragile.
+
+5. **Produce the diff.** Show `git diff <seed> best_skill.md` (or a plain diff of the two files). This is the reviewable change a human approves before the optimized skill ships back to wherever the skill lives.
+
+6. **Decision gate for the human.** Present: the test lift, the diff, the cost, and the honesty notes. Recommend ship / iterate / discard:
+   - **Ship** if the test lift is real (beyond noise) and the diff is sane.
+   - **Iterate** if selection improved but test didn't — likely overfit to the selection split; enlarge selection or the task pack.
+   - **Discard** if there's no test lift — the skill may already be good, or the task pack/verifiers don't capture what matters (revisit `skillopt-taskpack`).
+
+## Output
+- `best_skill.md` — the deployable artifact.
+- `skillopt.report.md` — the test-split report + changelog + cost + caveats.
+- a diff of seed → best for human review.
+
+Do **not** claim a win from the selection score alone. The selection split is what the gate optimized against; only the untouched **test** split is evidence the skill actually got better.

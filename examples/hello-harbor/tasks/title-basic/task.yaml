@@ -1,0 +1,17 @@
+# Harbor task (illustrative shape — confirm fields against the installed Harbor version).
+# One directory per task; the directory name "title-basic" is the task id.
+id: title-basic
+instruction: |
+  The file /work/doc.txt has lines of "key: value". Return the value of the
+  "title" key. Follow the format-answer skill.
+setup:
+  files:
+    /work/doc.txt: |
+      title: Hello Harbor
+      author: nobody
+verifiers:
+  - name: outcome
+    run: verify/outcome.sh
+  - name: adherence
+    run: verify/adherence.sh
+timeout_seconds: 120

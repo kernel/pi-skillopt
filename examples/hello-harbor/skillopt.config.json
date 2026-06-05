@@ -1,0 +1,23 @@
+{
+  "name": "hello-harbor: optimize format-answer",
+  "skillUnderTest": "./skills/format-answer/SKILL.md",
+  "taskPack": "./tasks",
+  "rollout": {
+    "backend": "docker",
+    "agent": "claude-code",
+    "model": "anthropic/claude-opus-4-7",
+    "image": "ubuntu:24.04",
+    "setup": {
+      "apt": ["jq"],
+      "commands": []
+    }
+  },
+  "splits": { "train": [], "selection": [], "test": [] },
+  "editBudget": 3,
+  "minEditBudget": 1,
+  "lrSchedule": "cosine",
+  "gateMetric": "mixed",
+  "mixedWeight": 0.5,
+  "selectionSamples": 2,
+  "maxSteps": 20
+}
