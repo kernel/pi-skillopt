@@ -15,6 +15,14 @@ You usually arrive with **just a skill**. Your job in this step: pin down *how t
 - **`run_rollout`** — run the configured agent over a split (train / selection / test) with the current skill mounted; returns hard/soft scores + failing trajectories.
 - **`log_step`** — submit your edited skill to the validation gate. Accept → snapshot + `best_skill.md`. Reject → revert. A tie is rejected.
 
+## Orient the user first
+
+Before asking anything, give a 1–2 sentence plain-language orientation — don't assume the user knows the moving parts (especially **Harbor**):
+
+> "This optimizes your `SKILL.md` by repeatedly running an agent on a set of tasks *with your skill loaded*, scoring each run, and keeping only the edits that improve the score on a held-out set. **Harbor** is the eval substrate that does the running and scoring — it launches a sandbox (the *backend* you'll pick), runs the chosen *agent* on each task, and grades the result with the task's verifiers. Your skill is what gets optimized; the task pack + Harbor are how each version gets measured."
+
+Adapt the wording, but make sure the user understands Harbor's role before they answer questions about backends, agents, or task packs.
+
 ## Step 1 — gather inputs (one question at a time, confirm once at the end)
 
 **Do NOT dump the whole config and ask the user to fill in the blanks.** Ask **one thing at a time**, carry a sensible default into every question so most answers are a quick "yes", and infer from context before asking. Only after you have everything do you show the **assembled config once** for a single confirmation — that's the one time the user sees the full picture.
@@ -41,7 +49,7 @@ Keep each turn to one short question. If the user says "just use defaults", assu
 
 ### Then confirm once, and write
 
-Assemble everything and show it **one time** for a single yes/no — this is the only full-form moment:
+Assemble everything and show it **one time** for a single yes/no — this is the only full-form moment. Alongside the JSON, add one plain sentence of what it will do, e.g. "*claude-code* will attempt these *N* tasks in an *e2b* sandbox with your skill loaded, and the gate keeps edits that beat the held-out selection split":
 
 ```json
 {
