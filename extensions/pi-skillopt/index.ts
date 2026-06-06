@@ -51,6 +51,9 @@ const snapshotDir = (d: string) => path.join(d, "skillopt.snapshots");
 // auto-sends the next iteration, and a hard cap so a runaway loop self-stops.
 const SETTLED_WINDOW_MS = 1500;
 const MAX_AUTORESUME_TURNS = 100;
+// Stop the loop after this many consecutive steps without a new best — a saturated
+// selection split otherwise grinds until maxSteps, growing the skill the whole way.
+const PLATEAU_PATIENCE = 5;
 
 function readConfig(dir: string): SkillOptConfig | null {
   try {
@@ -72,6 +75,8 @@ interface Runtime {
   autoResumeTurns: number;
   /** Rollouts run this session — gates the auto-loop so a chat-only turn can't spin. */
   rolloutsThisSession: number;
+  /** Set once the selection score has plateaued — stops the auto-loop. */
+  plateaued: boolean;
 }
 
 function freshRuntime(): Runtime {
@@ -84,6 +89,7 @@ function freshRuntime(): Runtime {
     pendingResumeTimer: null,
     autoResumeTurns: 0,
     rolloutsThisSession: 0,
+    plateaued: false,
   };
 }
 
@@ -134,11 +140,14 @@ export default function skilloptExtension(pi: ExtensionAPI) {
   };
 
   // -- auto-loop (settled-window resume) ------------------------------------
+  const PRUNE_NOTE =
+    "Keep the skill TIGHT: prefer replacing or deleting existing lines over appending, merge redundant rules, and cut anything that didn't help — a shorter, sharper skill beats a longer one. Never task-specific answers.";
+
   const composeResumeMessage = (): string =>
-    "Run the next skillopt iteration now: reflect on the latest failing trajectories, apply <= edit_budget bounded edits to the skill (generalizable, never task-specific answers), run_rollout('selection'), then log_step. Never roll out 'test'.";
+    `Run the next skillopt iteration now: reflect on the latest failing trajectories, apply <= edit_budget bounded edits to the skill, run_rollout('selection'), then log_step. ${PRUNE_NOTE} Never roll out 'test'.`;
 
   const composeCompactionResume = (): string =>
-    "Continue the skillopt loop. The compaction summary already holds the objective, rules, and recent steps — do not re-read skillopt.md / skillopt.jsonl. Pick the next edit from the remaining failure classes, run_rollout('selection'), then log_step.";
+    `Continue the skillopt loop. The compaction summary already holds the objective, rules, and recent steps — do not re-read skillopt.md / skillopt.jsonl. Pick the next edit from the remaining failure classes, run_rollout('selection'), then log_step. ${PRUNE_NOTE}`;
 
   const isSettled = (ctx: ExtensionContext): boolean => ctx.isIdle() && !ctx.hasPendingMessages();
 
@@ -194,7 +203,8 @@ export default function skilloptExtension(pi: ExtensionAPI) {
 
   // Why the rollout gate: a chat-only turn would otherwise loop forever, because
   // every agent_end would re-prompt, which would chat again.
-  const shouldAutoResumeAfterTurn = (r: Runtime): boolean => r.active && r.rolloutsThisSession > 0;
+  const shouldAutoResumeAfterTurn = (r: Runtime): boolean =>
+    r.active && r.rolloutsThisSession > 0 && !r.plateaued;
 
   // -- rebuild state on session load ----------------------------------------
   const reconstructState = (ctx: ExtensionContext): void => {
@@ -277,9 +287,13 @@ export default function skilloptExtension(pi: ExtensionAPI) {
 
       setActive(ctx, true);
       updateWidget(ctx);
+      const thinSelection =
+        cfg.splits.selection.length < 3
+          ? ` ⚠️ Selection has only ${cfg.splits.selection.length} task(s) — too few for a reliable gate signal (a saturated selection lets noise look like progress). Consider widening/hardening the pack before a serious run.`
+          : "";
       return result(
-        `Initialized "${params.name}". Splits — train ${cfg.splits.train.length} / selection ${cfg.splits.selection.length} / test ${cfg.splits.test.length}. ` +
-          `Now run a baseline: run_rollout(selection), log it as step 0, then start the loop. Do NOT run_rollout('test').`,
+        `Initialized "${params.name}". Splits — train ${cfg.splits.train.length} / selection ${cfg.splits.selection.length} / test ${cfg.splits.test.length}.${thinSelection} ` +
+          `Now run a baseline: run_rollout('selection'), log it as step 0. If the baseline is already ~maxed, there's no headroom — widen/harden the pack instead of looping. Do NOT run_rollout('test').`,
       );
     },
   });
@@ -309,14 +323,18 @@ export default function skilloptExtension(pi: ExtensionAPI) {
 
       const rollout = await runRollout({
         taskPack: resolve(dir, cfg.taskPack),
-        skillPath: rt(ctx).gate.currentSkill || resolve(dir, cfg.skillUnderTest),
+        // The working skill always lives at this path (edited in place, reverted on
+        // reject), so read it from disk — don't depend on in-memory runtime state.
+        skillPath: resolve(dir, cfg.skillUnderTest),
         taskIds: ids,
         split: params.split,
         env: cfg.rollout,
         // Keep Harbor's job output (incl. failing trajectories) in the session
         // dir so the agent can read it and `/skillopt clear` can remove it.
         jobsDir: path.join(dir, "skillopt.jobs"),
-        attempts: cfg.selectionSamples && params.split === "selection" ? cfg.selectionSamples : 1,
+        // Average several rollouts on the gate split to denoise the selection score
+        // (default 3) so a single noisy run can't trick the gate.
+        attempts: params.split === "selection" ? cfg.selectionSamples ?? 3 : 1,
         sampleFailures: params.sample_failures,
       });
 
@@ -350,9 +368,23 @@ export default function skilloptExtension(pi: ExtensionAPI) {
       const metric: GateMetric = cfg.gateMetric ?? "hard";
       const skillAbs = resolve(dir, cfg.skillUnderTest);
 
-      r.step += 1;
+      // Gate against the PERSISTED log, not in-memory runtime state — that state
+      // does not survive the autonomous loop's turns, so trusting it would compare
+      // every candidate against a zero baseline (every step reads as "new best").
+      const persisted = reconstruct(jsonlPath(dir));
+      const priorSteps = persisted?.steps ?? [];
+      const stepNum = priorSteps.length + 1;
+      const lastAccepted = [...priorSteps].reverse().find((s) => s.action !== "reject" && s.skill_version);
+      const baseline: GateState = {
+        currentSkill: skillAbs,
+        currentScore: persisted?.currentScore ?? 0,
+        bestSkill: skillAbs,
+        bestScore: persisted?.bestScore ?? 0,
+        bestStep: lastAccepted?.step ?? 0,
+      };
+
       const budget = editBudgetAt(
-        r.step,
+        stepNum,
         cfg.maxSteps ?? 40,
         cfg.editBudget,
         cfg.minEditBudget ?? Math.max(1, Math.floor(cfg.editBudget / 2)),
@@ -365,24 +397,28 @@ export default function skilloptExtension(pi: ExtensionAPI) {
         candSoft: params.sel_soft ?? 0,
         metric,
         mixedWeight: cfg.mixedWeight,
-        current: r.gate,
-        step: r.step,
+        current: baseline,
+        step: stepNum,
       });
 
       let snapshot: string | undefined;
       if (outcome.action === "reject") {
-        if (r.gate.currentScore > 0) fs.copyFileSync(snapshotFor(dir, r.gate.bestStep), skillAbs);
+        // Revert the working skill to the last accepted version (or the seed).
+        const revertTo = lastAccepted?.skill_version
+          ? path.join(snapshotDir(dir), lastAccepted.skill_version)
+          : bestSkillPath(dir);
+        if (fs.existsSync(revertTo)) fs.copyFileSync(revertTo, skillAbs);
       } else {
-        snapshot = `skill_v${String(r.step).padStart(4, "0")}.md`;
+        snapshot = `skill_v${String(stepNum).padStart(4, "0")}.md`;
+        fs.mkdirSync(snapshotDir(dir), { recursive: true });
         fs.copyFileSync(skillAbs, path.join(snapshotDir(dir), snapshot));
         if (outcome.action === "accept_new_best") fs.copyFileSync(skillAbs, bestSkillPath(dir));
       }
-      r.gate = outcome;
 
       const entry: StepEntry = {
         type: "step",
-        step: r.step,
-        segment: (reconstruct(jsonlPath(dir))?.segment ?? 1) - 1,
+        step: stepNum,
+        segment: (persisted?.segment ?? 1) - 1,
         timestamp: Date.now(),
         edit: params.edit,
         sel_hard: params.sel_hard,
@@ -395,18 +431,34 @@ export default function skilloptExtension(pi: ExtensionAPI) {
         confidence: null,
         skill_version: snapshot,
       };
-      r.steps.push(entry);
-      const base = r.steps[0]?.current_score ?? 0;
-      entry.confidence = confidence(r.steps, metric === "soft" ? "sel_soft" : "sel_hard", base, outcome.bestScore);
+      const allSteps = [...priorSteps, entry];
+      const base = allSteps[0]?.current_score ?? 0;
+      entry.confidence = confidence(allSteps, metric === "soft" ? "sel_soft" : "sel_hard", base, outcome.bestScore);
       appendEntry(jsonlPath(dir), entry);
+
+      // Keep in-memory state in rough sync for the widget + auto-loop gate.
+      r.gate = outcome;
+      r.step = stepNum;
+      r.steps = allSteps;
+      r.active = true;
+
+      // Plateau early-stop: if the best hasn't improved for a while, halt the loop.
+      const sinceImproved = stepsSinceNewBest(allSteps);
+      if (sinceImproved >= PLATEAU_PATIENCE) {
+        r.plateaued = true;
+        cancelPendingResume(r);
+      }
       updateWidget(ctx);
 
       const verb = outcome.action === "reject" ? "REJECTED (reverted)" : outcome.action === "accept_new_best" ? "ACCEPTED ★ new best" : "accepted";
+      const tail = r.plateaued
+        ? `\n\nPLATEAU: no new best in ${sinceImproved} steps — STOP and run /skill:skillopt-finalize. To gain more, widen or harden the task pack rather than editing an already-saturated skill.`
+        : `\nContinue the loop.`;
       return result(
-        `Step ${r.step}: ${verb}. selection ${metric}=${pct(metric === "soft" ? params.sel_soft ?? 0 : params.sel_hard)} · best ${pct(outcome.bestScore)} · budget ${budget}` +
+        `Step ${stepNum}: ${verb}. selection ${metric}=${pct(metric === "soft" ? params.sel_soft ?? 0 : params.sel_hard)} · best ${pct(outcome.bestScore)} · budget ${budget}` +
           (entry.confidence !== null ? ` · conf ${entry.confidence.toFixed(1)}×` : ``) +
-          `. Continue the loop.`,
-        { action: outcome.action, best_score: outcome.bestScore },
+          tail,
+        { action: outcome.action, best_score: outcome.bestScore, plateaued: r.plateaued },
       );
     },
   });
@@ -439,7 +491,8 @@ export default function skilloptExtension(pi: ExtensionAPI) {
     const note =
       "\n\n## SkillOpt Mode (ACTIVE)" +
       "\nYou are optimizing a SKILL.md via gated Harbor rollouts. Each iteration: reflect on failing train/selection trajectories, apply <= edit_budget bounded edits to the skill, run_rollout('selection'), then log_step — the gate keeps or reverts." +
-      "\nNever roll out 'test' (it is the held-out final number). Never hardcode task-specific answers into the skill. Keep going until the selection score plateaus or you are interrupted.";
+      "\nKeep the skill TIGHT: prefer replacing or deleting lines over appending, merge redundant rules, and remove guidance that didn't help — a shorter, sharper skill is better. The skill should not grow unboundedly across steps." +
+      "\nNever roll out 'test' (it is the held-out final number). Never hardcode task-specific answers into the skill. Stop when the selection score plateaus (log_step will tell you) or you are interrupted.";
     return { systemPrompt: event.systemPrompt + note };
   });
 
@@ -568,8 +621,10 @@ export function stageInputs(dir: string, cfg: SkillOptConfig): void {
   if (changed) fs.writeFileSync(configPath(dir), JSON.stringify(cfg, null, 2));
 }
 
-function snapshotFor(dir: string, step: number): string {
-  return path.join(snapshotDir(dir), `skill_v${String(step).padStart(4, "0")}.md`);
+/** Steps since the last accept_new_best (0 = the latest step set a new best). */
+export function stepsSinceNewBest(steps: StepEntry[]): number {
+  const last = steps.map((s) => s.action).lastIndexOf("accept_new_best");
+  return last === -1 ? steps.length : steps.length - 1 - last;
 }
 
 /** Task ids = subdirectory names of the task pack (one dir per task). */

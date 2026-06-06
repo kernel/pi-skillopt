@@ -119,6 +119,7 @@ train N · selection N · test N  (test is OFF LIMITS until finalize)
 
 ## Edit rules
 - Bounded edits only (append / insert_after / replace / delete a span).
+- Keep it tight: prefer replace/delete over append, merge redundant rules, cut guidance that didn't help. A shorter, sharper skill beats a longer one — the skill must not grow unboundedly across steps.
 - Generalize: never hardcode answers/ids/paths for specific tasks into the skill.
 - Respect the <!-- SLOW_UPDATE_START/END --> region if present.
 
@@ -137,10 +138,12 @@ train N · selection N · test N  (test is OFF LIMITS until finalize)
 
 **Loop rules**
 - **The selection gate is law.** Don't argue with a reject — try a structurally different edit.
-- **Never roll out `test`.** It exists only for the final honest number (`skillopt-finalize`).
+- **Keep the skill tight.** Prefer replace/delete over append, merge redundant rules, prune what didn't help. Don't let it balloon.
+- **Stop at a plateau.** When the best hasn't improved for several steps, `log_step` returns a PLATEAU notice — stop and run `skillopt-finalize`. Don't keep editing an already-saturated skill; if you want more, widen/harden the task pack instead.
+- **No headroom = don't loop.** If the baseline already scores ~max (nothing failing to learn from), there's nothing to optimize — say so and widen/harden the pack rather than grinding steps.
+- **Never roll out `test`.** It exists only for the final honest number (`skillopt-finalize`); it's blocked unless finalize passes `final: true`.
 - **Don't overfit.** If an edit names a specific task's answer, it's cheating — the held-out selection split will usually punish it, but don't write it in the first place.
-- **Watch confidence.** Agent rollouts are noisy; after a few steps `log_step` reports best-vs-noise. If it's low, raise `selectionSamples` or distrust marginal gains.
-- **Keep going** until `maxSteps`, the score plateaus across several edits, or the user stops you.
+- **Watch confidence.** Agent rollouts are noisy; after a few steps `log_step` reports best-vs-noise. If it's low, raise `selectionSamples` (re-rolls each selection task N times and averages; default 3) or distrust marginal gains.
 
 ## Step 5 — finish
 

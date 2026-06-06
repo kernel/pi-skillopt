@@ -20,6 +20,6 @@
   "lrSchedule": "cosine",
   "gateMetric": "mixed",
   "mixedWeight": 0.5,
-  "selectionSamples": 2,
+  "selectionSamples": 3,
   "maxSteps": 20
 }
