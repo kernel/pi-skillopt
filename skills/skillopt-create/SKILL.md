@@ -25,10 +25,19 @@ Ask in this order, waiting for each answer before the next:
 2. **What does good look like?** What an agent should reliably accomplish with it, and any behaviors/gotchas the skill is meant to enforce.
 3. **Where do rollouts run?** The backend — default `docker`; alternatives `e2b`, `daytona`, `runloop`, `modal`. (One question, with the default offered.)
 4. **Which agent + model?** Default `claude-code` on a current model (e.g. `anthropic/claude-opus-4-8`). Other agents: `codex`, `pi`, `opencode`.
-5. **Does the task container need anything preloaded?** One open question — *not* a checklist. Most skills need nothing beyond the base image, or just one secret name (e.g. an API key). Only if they say yes, drill into specifics: companion skills, apt/npm/pip packages, CLIs, env/secret **names** (never values), setup commands, and a non-default base image.
-6. **Tuning?** Offer the defaults on one line and accept "defaults are fine": splits `60:20:20`, gate metric `hard` (use `soft`/`mixed` for tiny selection sets), edit budget `4`, max steps `40`.
+5. **Credentials** — once you know the backend + agent, name the keys that must be set and confirm they're present. **Never ask for or print a key value — only confirm it's exported.**
+   - **Backend key** (read by the Harbor CLI on the host, *not* injected into the sandbox, so it does NOT go in the config): `e2b` → `E2B_API_KEY`, `daytona` → `DAYTONA_API_KEY`, `runloop` → `RUNLOOP_API_KEY`, `modal` → `MODAL_TOKEN`. `docker`/local → none. Ask e.g. "is `E2B_API_KEY` exported in the shell you're running pi from?"
+   - **Model-provider key** (passed *into* the sandbox for the rollout agent → add its name to `rollout.setup.env`): Anthropic / `claude-code` → `ANTHROPIC_API_KEY`; OpenAI / `codex` → `OPENAI_API_KEY`; etc. Confirm it's set in the host env too.
+   
+   Don't move on to rollouts until the required keys are confirmed.
+6. **Anything else to preload?** One open question — *not* a checklist, and separate from the credentials above. Most skills need nothing beyond the base image. Only if they say yes, drill into: companion skills, apt/npm/pip packages, CLIs, other env var names, setup commands, and a non-default base image.
+7. **Tuning** — offer the defaults, but explain each knob in a sentence so the choice is informed; don't just list values. Accept "defaults are fine":
+   - **splits** (default `60:20:20`) — how the task pack is divided: **train** (the agent reflects on these failures to propose edits), **selection** (held-out set the gate scores every candidate against — never reflected on), **test** (scored once at the very end for the honest number). More tasks → a more reliable selection signal.
+   - **gate metric** (default `hard`) — what "better" means at the gate: `hard` = pass rate (each task fully passes or it doesn't), `soft` = mean partial-credit reward in [0,1] (use when verifiers give graded scores, or the selection set is tiny), `mixed` = a blend of the two.
+   - **edit budget** (default `4`) — the max number of bounded edits the agent may apply to the skill per step (its "learning rate"); it cosine-decays toward a floor as the run progresses.
+   - **max steps** (default `40`) — how many iterations before the loop auto-stops.
 
-Keep each turn to one short question. If the user says "just use defaults", assume them and skip ahead. Don't ask about preloads or tuning before you have the skill + the rollout basics.
+Keep each turn to one short question. If the user says "just use defaults", assume the tuning defaults and skip ahead — but still confirm the credentials, since rollouts fail without them. Don't ask about preloads or tuning before you have the skill + the rollout basics.
 
 ### Then confirm once, and write
 
@@ -44,7 +53,7 @@ Assemble everything and show it **one time** for a single yes/no — this is the
     "agent": "claude-code",
     "model": "anthropic/claude-opus-4-8",
     "image": "ubuntu:24.04",
-    "setup": { "env": ["SOME_API_KEY"] }
+    "setup": { "env": ["ANTHROPIC_API_KEY"] }
   },
   "splits": { "train": [], "selection": [], "test": [] },
   "editBudget": 4,
