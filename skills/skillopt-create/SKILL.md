@@ -82,9 +82,10 @@ On confirmation, write it to `skillopt.config.json`. (Full schema in the repo RE
 
 ## Step 2 — get a task pack
 
-If the user already has a Harbor task pack, point `taskPack` at it and use it **as-is** — `init_optimization` copies it into the working dir; don't rename or rewrite its `task.toml` files.
+The task pack defines what "better" *means*, so it is never a detail to assume. **Never silently adopt a pack just because you found one** next to the skill (e.g. a `./tasks` dir alongside it, or one named in an existing config) — that pack may test something unrelated to what the user wants.
 
-**If they don't (the common case), invoke `/skill:skillopt-taskpack`** to generate one from the skill, into the working dir's `./tasks`. Do not skip this and do not invent tasks inline — a good, reviewed task pack is the difference between training and noise. Pause for the user to eyeball the generated tasks before training.
+- **If you find a candidate pack, confirm it before using it.** Show what it is and ask: "I found a task pack at `<path>` (N tasks: a, b, c…). Use this to score the skill, or build a fresh one?" Use it only on an explicit yes — and then **as-is** (`init_optimization` copies it into the working dir; don't rename or rewrite its `task.toml`).
+- **If there's no pack, or the user declines it, construct one.** Invoke `/skill:skillopt-taskpack` to generate a pack from the skill into `./tasks`. Don't invent tasks inline — a good, reviewed pack is the difference between training and noise. **Solicit the guidance you need** (which capabilities and gotchas matter most, what counts as success, any edge cases) so the generated tasks are high quality, and pause for the user to review them before training.
 
 ## Step 3 — initialize and baseline
 
