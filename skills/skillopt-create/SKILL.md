@@ -15,29 +15,24 @@ You usually arrive with **just a skill**. Your job in this step: pin down *how t
 - **`run_rollout`** — run the configured agent over a split (train / selection / test) with the current skill mounted; returns hard/soft scores + failing trajectories.
 - **`log_step`** — submit your edited skill to the validation gate. Accept → snapshot + `best_skill.md`. Reject → revert. A tie is rejected.
 
-## Step 1 — gather inputs
+## Step 1 — gather inputs (one question at a time, confirm once at the end)
 
-Ask (or infer from context). The first two are about *what* to optimize; the rest define *how rollouts run* — this is the part people forget, so be explicit.
+**Do NOT dump the whole config and ask the user to fill in the blanks.** Ask **one thing at a time**, carry a sensible default into every question so most answers are a quick "yes", and infer from context before asking. Only after you have everything do you show the **assembled config once** for a single confirmation — that's the one time the user sees the full picture.
 
-**The skill**
-1. **Skill file** — path to the `SKILL.md` to optimize (the only file the loop edits).
-2. **What good looks like** — what should an agent reliably accomplish with this skill? Any behaviors/gotchas the skill is trying to enforce?
+Ask in this order, waiting for each answer before the next:
 
-**The rollout environment** (this becomes `skillopt.config.json → rollout`)
-3. **Container backend** — where each task runs: `docker` (local), `daytona`, `e2b`, `runloop`, `modal`, … Pick what Harbor is configured for.
-4. **Agent** — the harness that executes tasks: `claude-code`, `codex`, `pi`, `opencode`, …
-5. **Model** — e.g. `anthropic/claude-opus-4-8`, `openai/gpt-5.5`.
-6. **Base image** — container image or Dockerfile the rollout starts from.
-7. **Preloads** — everything the agent needs *before* it works a task:
-   - **other skills** it depends on (paths / repo refs / registry ids),
-   - **npm / apt / pip** packages and **CLIs** to install,
-   - **env vars / secrets** to pass through (names only — values come from the backend's secret store, never a session file),
-   - arbitrary **setup commands**.
-8. **Splits** — train/selection/test ratio (default `60:20:20`).
-9. **Gate metric** — `hard` (exact pass, default), `soft` (partial credit; use for tiny selection sets), or `mixed`.
-10. **Budget** — `edit_budget` (max edits/step, default 4, cosine-decays), `maxSteps`.
+1. **Which skill?** The path to the `SKILL.md` to optimize (the only file the loop edits). Look in the cwd first; if there's one obvious candidate, propose it — otherwise ask. Don't grab an unrelated SKILL.md just because it's nearby.
+2. **What does good look like?** What an agent should reliably accomplish with it, and any behaviors/gotchas the skill is meant to enforce.
+3. **Where do rollouts run?** The backend — default `docker`; alternatives `e2b`, `daytona`, `runloop`, `modal`. (One question, with the default offered.)
+4. **Which agent + model?** Default `claude-code` on a current model (e.g. `anthropic/claude-opus-4-8`). Other agents: `codex`, `pi`, `opencode`.
+5. **Does the task container need anything preloaded?** One open question — *not* a checklist. Most skills need nothing beyond the base image, or just one secret name (e.g. an API key). Only if they say yes, drill into specifics: companion skills, apt/npm/pip packages, CLIs, env/secret **names** (never values), setup commands, and a non-default base image.
+6. **Tuning?** Offer the defaults on one line and accept "defaults are fine": splits `60:20:20`, gate metric `hard` (use `soft`/`mixed` for tiny selection sets), edit budget `4`, max steps `40`.
 
-Write these to `skillopt.config.json` (schema in the repo README). Example:
+Keep each turn to one short question. If the user says "just use defaults", assume them and skip ahead. Don't ask about preloads or tuning before you have the skill + the rollout basics.
+
+### Then confirm once, and write
+
+Assemble everything and show it **one time** for a single yes/no — this is the only full-form moment:
 
 ```json
 {
@@ -45,17 +40,11 @@ Write these to `skillopt.config.json` (schema in the repo README). Example:
   "skillUnderTest": "./skills/my-skill/SKILL.md",
   "taskPack": "./tasks",
   "rollout": {
-    "backend": "e2b",
+    "backend": "docker",
     "agent": "claude-code",
     "model": "anthropic/claude-opus-4-8",
     "image": "ubuntu:24.04",
-    "setup": {
-      "skills": ["./skills/dep-skill/SKILL.md"],
-      "npm": ["some-cli"],
-      "apt": ["jq"],
-      "env": ["SOME_API_KEY"],
-      "commands": ["curl -fsSL https://example.com/install.sh | sh"]
-    }
+    "setup": { "env": ["SOME_API_KEY"] }
   },
   "splits": { "train": [], "selection": [], "test": [] },
   "editBudget": 4,
@@ -64,7 +53,9 @@ Write these to `skillopt.config.json` (schema in the repo README). Example:
 }
 ```
 
-> **Where preloads land:** Harbor has no run-time preload hook, so `skillopt-taskpack` bakes the base image + `apt`/`npm`/`pip`/`commands` into each task's `environment/Dockerfile` (run at *build* time). Only the **backend**, **agent**, **model**, **companion skills**, and **secret names** are applied per-rollout. Fill in the preloads here — but expect them to show up in the generated task Dockerfiles, not as a separate install step.
+On confirmation, write it to `skillopt.config.json`. (Full schema in the repo README; `rollout.setup` also takes `skills` / `apt` / `npm` / `pip` / `commands` when preloads are needed.)
+
+> **Where preloads land:** Harbor has no run-time preload hook, so `skillopt-taskpack` bakes the base image + `apt`/`npm`/`pip`/`commands` into each task's `environment/Dockerfile` (run at *build* time). Only the **backend**, **agent**, **model**, **companion skills**, and **secret names** are applied per-rollout.
 
 ## Step 2 — get a task pack
 
