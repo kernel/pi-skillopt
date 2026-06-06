@@ -13,9 +13,9 @@ The loop only ever touched the **train** and **selection** splits. `test` has be
 
 1. **Confirm the run is done.** The selection score should have plateaued (several consecutive rejects, or `maxSteps` reached). If it's still climbing, keep looping instead.
 
-2. **Score the seed on test (baseline).** Check out the original skill (the seed) and `run_rollout('test')`. Record `hard`/`soft`. This is the "before".
+2. **Score the seed on test (baseline).** Check out the original skill (the seed) and `run_rollout(split: 'test', final: true)`. Record `hard`/`soft`. This is the "before". (`final: true` is required — the `test` split is otherwise blocked during the loop.)
 
-3. **Score `best_skill.md` on test.** Put `best_skill.md` in place and `run_rollout('test')`. Record `hard`/`soft`. This is the "after". Run each a few times if the env is noisy and report the mean ± spread.
+3. **Score `best_skill.md` on test.** Put `best_skill.md` in place and `run_rollout(split: 'test', final: true)`. Record `hard`/`soft`. This is the "after". Run each a few times if the env is noisy and report the mean ± spread.
 
 4. **Write the report** (`skillopt.report.md`):
    - **Headline:** test `hard` seed → best (absolute + %), and the same for `soft`.

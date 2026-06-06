@@ -99,6 +99,7 @@ const RunRolloutParams = Type.Object({
     { description: "Which split to roll out. Reflect on 'train'; the gate uses 'selection'; 'test' is for finalize only." },
   ),
   sample_failures: Type.Optional(Type.Number({ description: "Max failing trajectories to surface (default 4)." })),
+  final: Type.Optional(Type.Boolean({ description: "Set ONLY when skillopt-finalize scores the held-out 'test' split. Required to roll out 'test'; ignored otherwise." })),
 });
 
 const LogStepParams = Type.Object({
@@ -232,6 +233,18 @@ export default function skilloptExtension(pi: ExtensionAPI) {
       // and never mutates the source skill / task pack (they stay read-only inputs).
       stageInputs(dir, cfg);
 
+      // Idempotent: if a session already exists, RESUME it rather than reset.
+      // Re-initializing mid-run used to zero the baseline, which made later ties
+      // look like improvements and tricked the gate. To start over: /skillopt clear.
+      const existing = reconstruct(jsonlPath(dir));
+      if (existing) {
+        reconstructState(ctx);
+        return result(
+          `Resumed "${existing.name}" — ${existing.steps.length} steps, best ${pct(existing.bestScore)}. ` +
+            `Continue the loop where it left off, or run /skillopt clear to start over from a fresh baseline.`,
+        );
+      }
+
       if (!cfg.splits || cfg.splits.train.length + cfg.splits.selection.length === 0) {
         const ids = discoverTaskIds(resolve(dir, cfg.taskPack));
         cfg.splits = makeSplits(ids, "60:20:20");
@@ -283,6 +296,14 @@ export default function skilloptExtension(pi: ExtensionAPI) {
       const dir = workDir(ctx);
       const cfg = readConfig(dir);
       if (!cfg) return result("No active session. Run init_optimization first.");
+      // The test split is held out — only skillopt-finalize scores it (once), and
+      // only by passing final: true. Prose alone didn't stop the agent from peeking.
+      if (params.split === "test" && !params.final) {
+        return result(
+          "The 'test' split is held out — it's scored only by skillopt-finalize, once, for the honest number. " +
+            "During the loop use 'train' (reflect) and 'selection' (gate). If you are finalizing, call run_rollout with final: true.",
+        );
+      }
       const ids = cfg.splits[params.split];
       if (!ids?.length) return result(`Split "${params.split}" is empty.`);
 

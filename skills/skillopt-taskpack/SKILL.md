@@ -59,13 +59,13 @@ tasks/
 
 Scaffold the canonical shape with `harbor init <org>/<task-id> -t` and fill it in. Key contracts:
 
-- **`task.toml`** — `schema_version = "1.3"`, a `[task]` with `name = "<org>/<task-id>"` (the **`org/name` format is required**), `[environment]` with `os = "linux"`, and `[agent]` / `[verifier]` timeouts. Copy the shape from `harbor init` output or the `examples/hello-harbor` tasks.
+- **`task.toml`** — `schema_version = "1.3"`, a `[task]` with `name = "<org>/<task-id>"` (the **`org/name` format is required**), `[environment]` with `os = "linux"`, and `[agent]` / `[verifier]` timeouts. Copy the shape from `harbor init` output or the `examples/hello-harbor` tasks. **Namespace gotcha:** on a team-scoped backend (e.g. e2b/registry), `<org>` may need to match your team — if a run is rejected with "namespace `<org>` must match your team", set `<org>` to the team name across all tasks.
 - **`environment/Dockerfile`** — bake in everything: the base image, the skill's required CLIs/packages, plus whatever the verifier needs (e.g. `python3`). **Do not install anything at run time** inside `test.sh` — runtime `apt-get`/`uv`/`pip` is flaky and is the single most common cause of "no reward file found". For tmux-driven agent harnesses (e.g. `terminus`), also bake in `tmux` + `asciinema`.
 - **`tests/test.sh`** — Harbor copies `tests/` to `/tests/` and runs this script. It **must write the reward** to one of:
   - `/logs/verifier/reward.json` — a flat object of named rewards, e.g. `{"outcome": 1.0, "adherence": 0.0}` (use this for multi-reward outcome + adherence), or
   - `/logs/verifier/reward.txt` — a single float.
   
-  The extension reads these back, averages the values into `soft`, and treats "all rewards ≥ the pass threshold" as `hard`.
+  The extension reads these back, averages the values into `soft`, and treats "all rewards ≥ the pass threshold" as `hard`. **Always write a reward file, even on internal error** — default to a `0` reward up front (or `trap`/fallback) so a crashing verifier scores 0 instead of producing "no reward file found", which errors the whole trial.
 - **`solution/solve.sh`** — the reference solution. Not required, but if you provide it the `oracle` agent will run it instead of a model, which is how you validate the pack for free (step 5).
 
 Do **not** put the skill being optimized into the task — it's injected separately by Harbor (the rollout env's `agents[].skills`), so the same pack scores any candidate version.

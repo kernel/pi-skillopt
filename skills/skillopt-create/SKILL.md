@@ -93,6 +93,8 @@ If the user already has a Harbor task pack, point `taskPack` at it and use it **
 3. `init_optimization` → `run_rollout('selection')` → `log_step` as the baseline (edit: "baseline").
 4. Also `run_rollout('train')` once to see where the skill actually fails.
 
+**Call `init_optimization` exactly once.** If a session already exists it *resumes* (it won't reset your baseline) — never re-init mid-run to "reset". To genuinely start over, run `/skillopt clear` first. And never `run_rollout('test')` during the loop — it's blocked unless `skillopt-finalize` passes `final: true`.
+
 ### `skillopt.md`
 
 ```markdown
