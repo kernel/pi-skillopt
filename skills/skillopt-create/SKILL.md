@@ -23,6 +23,12 @@ Before asking anything, give a 1–2 sentence plain-language orientation — don
 
 Adapt the wording, but make sure the user understands Harbor's role before they answer questions about backends, agents, or task packs.
 
+## A run is self-contained in the working directory
+
+The working directory is wherever pi was launched (`ctx.cwd`). **All run state lives there** — session files (`skillopt.md`, `skillopt.jsonl`, `skillopt.jobs/`, snapshots), and `best_skill.md`. The seed skill and task pack are **inputs**: `init_optimization` copies any that live outside the working dir *into* it (`./skills/<name>/`, `./tasks/`) and rewrites the config to the local copies, so the loop edits those copies and **never mutates the user's source files**. The deliverable is `best_skill.md` + a diff (`skillopt-finalize`) the user applies back to the source themselves.
+
+Therefore: write `skillopt.config.json` in the working dir, and **do not set `workingDir` to the skill's source location** — that would make the run operate on the originals. If the user points at a skill or pack elsewhere, that's fine; staging handles it.
+
 ## Step 1 — gather inputs (one question at a time, confirm once at the end)
 
 **Do NOT dump the whole config and ask the user to fill in the blanks.** Ask **one thing at a time**, carry a sensible default into every question so most answers are a quick "yes", and infer from context before asking. Only after you have everything do you show the **assembled config once** for a single confirmation — that's the one time the user sees the full picture.
@@ -76,9 +82,9 @@ On confirmation, write it to `skillopt.config.json`. (Full schema in the repo RE
 
 ## Step 2 — get a task pack
 
-If the user already has a Harbor task pack, point `taskPack` at it.
+If the user already has a Harbor task pack, point `taskPack` at it and use it **as-is** — `init_optimization` copies it into the working dir; don't rename or rewrite its `task.toml` files.
 
-**If they don't (the common case), invoke `/skill:skillopt-taskpack`** to generate one from the skill. Do not skip this and do not invent tasks inline — a good, reviewed task pack is the difference between training and noise. Pause for the user to eyeball the generated tasks before training.
+**If they don't (the common case), invoke `/skill:skillopt-taskpack`** to generate one from the skill, into the working dir's `./tasks`. Do not skip this and do not invent tasks inline — a good, reviewed task pack is the difference between training and noise. Pause for the user to eyeball the generated tasks before training.
 
 ## Step 3 — initialize and baseline
 

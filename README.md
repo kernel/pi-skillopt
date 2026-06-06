@@ -90,6 +90,8 @@ The agent walks you through:
 
 ## Session files
 
+A run is **self-contained in the working directory** (where pi was launched). `init_optimization` copies an external seed skill / task pack *into* the working dir and points the config at the local copies, so the loop edits copies and never mutates your source — the result is `best_skill.md` + a diff you apply back yourself.
+
 | file | role |
 |---|---|
 | `skillopt.config.json` | the run: skill, task pack, **rollout env**, splits, edit budget, gate metric |

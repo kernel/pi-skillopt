@@ -228,6 +228,10 @@ export default function skilloptExtension(pi: ExtensionAPI) {
       const cfg = readConfig(dir);
       if (!cfg) return result(`No skillopt.config.json found in ${dir}. Run /skill:skillopt-create first.`);
 
+      // Stage external inputs into the workspace so the loop edits local copies
+      // and never mutates the source skill / task pack (they stay read-only inputs).
+      stageInputs(dir, cfg);
+
       if (!cfg.splits || cfg.splits.train.length + cfg.splits.selection.length === 0) {
         const ids = discoverTaskIds(resolve(dir, cfg.taskPack));
         cfg.splits = makeSplits(ids, "60:20:20");
@@ -505,6 +509,42 @@ function workDir(ctx: ExtensionContext): string {
 
 function resolve(dir: string, p: string): string {
   return path.isAbsolute(p) ? p : path.resolve(dir, p);
+}
+
+/**
+ * Copy an external seed skill + task pack into the working dir so a run is
+ * self-contained and never mutates the source. Inputs already inside `dir` are
+ * left untouched. Rewrites skillopt.config.json to point at the local copies.
+ * Mutates `cfg` in place.
+ */
+export function stageInputs(dir: string, cfg: SkillOptConfig): void {
+  const base = path.resolve(dir);
+  const within = (p: string) => {
+    const r = path.resolve(p);
+    return r === base || r.startsWith(base + path.sep);
+  };
+  let changed = false;
+
+  // Skill: copy the whole skill directory (SKILL.md + any companion files).
+  const seedSkill = resolve(dir, cfg.skillUnderTest);
+  if (!within(seedSkill)) {
+    const srcDir = path.dirname(seedSkill);
+    const destDir = path.join(dir, "skills", path.basename(srcDir));
+    fs.mkdirSync(path.dirname(destDir), { recursive: true });
+    fs.cpSync(srcDir, destDir, { recursive: true });
+    cfg.skillUnderTest = `./${path.relative(dir, path.join(destDir, "SKILL.md"))}`;
+    changed = true;
+  }
+
+  // Task pack: copy the whole pack (task ids = subdir names, preserved).
+  const pack = resolve(dir, cfg.taskPack);
+  if (!within(pack)) {
+    fs.cpSync(pack, path.join(dir, "tasks"), { recursive: true });
+    cfg.taskPack = "./tasks";
+    changed = true;
+  }
+
+  if (changed) fs.writeFileSync(configPath(dir), JSON.stringify(cfg, null, 2));
 }
 
 function snapshotFor(dir: string, step: number): string {
