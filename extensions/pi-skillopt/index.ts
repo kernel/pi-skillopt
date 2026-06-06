@@ -34,7 +34,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import type { SkillOptConfig, StepEntry, GateMetric } from "./types.ts";
-import { evaluateGate, editBudgetAt, type GateState } from "./gate.ts";
+import { evaluateGate, editBudgetAt, selectGateScore, type GateState } from "./gate.ts";
 import { makeSplits, assertDisjoint } from "./splits.ts";
 import { runRollout } from "./harbor.ts";
 import { appendEntry, reconstruct, confidence } from "./jsonl.ts";
@@ -338,17 +338,37 @@ export default function skilloptExtension(pi: ExtensionAPI) {
         sampleFailures: params.sample_failures,
       });
 
-      rt(ctx).rolloutsThisSession++;
+      const r = rt(ctx);
+      let saturated = false;
+      if (params.split === "test") {
+        // A test rollout is skillopt-finalize scoring the held-out split — terminal.
+        // It must NOT re-arm the loop, so don't count it and clear any pending resume.
+        cancelPendingResume(r);
+      } else {
+        r.rolloutsThisSession++;
+        // No headroom: once the gate metric tops out on selection, no edit can be
+        // accepted — stop the loop instead of grinding additive edits.
+        if (params.split === "selection") {
+          const gateScore = selectGateScore(rollout.hard, rollout.soft, cfg.gateMetric ?? "hard", cfg.mixedWeight);
+          if (gateScore >= 1) {
+            saturated = true;
+            r.plateaued = true;
+            cancelPendingResume(r);
+          }
+        }
+      }
 
       const lines = [
         `Rollout on ${params.split}: hard ${pct(rollout.hard)} · soft ${rollout.soft.toFixed(3)} (${rollout.perTask.length} tasks)`,
         rollout.failing.length ? `\nFailing tasks to reflect on:` : `\nNo failures in this split.`,
         ...rollout.failing.map((f) => `  - ${f.taskId}: ${JSON.stringify(f.rewards)}${f.trajectory ? `  trajectory: ${f.trajectory}` : ""}`),
-        params.split === "train"
-          ? `\nPropose <= edit_budget bounded edits to the skill that fix the COMMON failure pattern, then run_rollout('selection') and log_step.`
-          : ``,
+        saturated
+          ? `\nSelection is at the ceiling (${pct(rollout.hard)}) — no headroom left for the gate to reward, so the loop is done. STOP and run /skill:skillopt-finalize; to gain more, widen or harden the task pack.`
+          : params.split === "train"
+            ? `\nPropose <= edit_budget bounded edits to the skill that fix the COMMON failure pattern, then run_rollout('selection') and log_step.`
+            : ``,
       ];
-      return result(lines.join("\n"), { rollout });
+      return result(lines.join("\n"), { rollout, saturated });
     },
   });
 

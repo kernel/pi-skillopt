@@ -31,6 +31,8 @@ The loop only ever touched the **train** and **selection** splits. `test` has be
    - **Iterate** if selection improved but test didn't — likely overfit to the selection split; enlarge selection or the task pack.
    - **Discard** if there's no test lift — the skill may already be good, or the task pack/verifiers don't capture what matters (revisit `skillopt-taskpack`).
 
+7. **Close the run.** Run `/skillopt off` — finalize is terminal, so turn skillopt mode off to stop the loop from auto-resuming after the test scoring.
+
 ## Output
 - `best_skill.md` — the deployable artifact.
 - `skillopt.report.md` — the test-split report + changelog + cost + caveats.
