@@ -45,11 +45,18 @@ Ask in this order, waiting for each answer before the next:
    
    Don't move on to rollouts until the required keys are confirmed.
 6. **Anything else to preload?** One open question — *not* a checklist, and separate from the credentials above. Most skills need nothing beyond the base image. Only if they say yes, drill into: companion skills, apt/npm/pip packages, CLIs, other env var names, setup commands, and a non-default base image.
-7. **Tuning** — offer the defaults, but explain each knob in a sentence so the choice is informed; don't just list values. Accept "defaults are fine":
-   - **splits** (default `60:20:20`) — how the task pack is divided: **train** (the agent reflects on these failures to propose edits), **selection** (held-out set the gate scores every candidate against — never reflected on), **test** (scored once at the very end for the honest number). More tasks → a more reliable selection signal.
-   - **gate metric** (default `hard`) — what "better" means at the gate: `hard` = pass rate (each task fully passes or it doesn't), `soft` = mean partial-credit reward in [0,1] (use when verifiers give graded scores, or the selection set is tiny), `mixed` = a blend of the two.
-   - **edit budget** (default `4`) — the max number of bounded edits the agent may apply to the skill per step (its "learning rate"); it cosine-decays toward a floor as the run progresses.
-   - **max steps** (default `40`) — how many iterations before the loop auto-stops.
+7. **Tuning** — present these as a **bulleted list, one bullet per setting** — explanation first, default last. **Do NOT compress them into a single sentence with parenthetical labels** (that's what's confused users). The goal here is to *teach how skillopt works*, briefly. Lead in with one line — "a few knobs, all have sensible defaults" — then the bullets, then accept "defaults are fine". Use roughly this (adapt the wording, keep the substance):
+
+   - **Splits — how your tasks get divided into three groups** (default 60/20/20: train/selection/test):
+     - *train* — the tasks the agent studies each round to see what's failing and decide what to change in the skill.
+     - *selection* — a separate, held-out group used only to **judge whether an edit helped**: a change is kept only if it scores higher on these. Keeping them apart from train is what stops the skill from being over-fit to specific tasks.
+     - *test* — never touched during the loop; scored once at the very end, so the final "did it actually improve" number can't be gamed.
+   - **Gate metric — how an edit is scored "better"** (default `hard`). ("The gate" is the automatic keep-or-revert decision made after every edit, using this metric.)
+     - *hard* — pass rate: each task fully passes or fails, and an edit must raise the fraction that pass.
+     - *soft* — average partial-credit score (0–1 per task); use when your verifiers give graded scores, or the selection group is small.
+     - *mixed* — a blend of hard and soft.
+   - **Edit budget — how many changes the agent may make to the skill per round** (default 4). Like a learning rate: keeps each round to a few focused edits, and it shrinks as the run goes on so later rounds make smaller, safer changes.
+   - **Max steps — how many rounds before the loop stops on its own** (default 40). One round = reflect on failures → edit the skill → re-score → keep or revert.
 
 Keep each turn to one short question. If the user says "just use defaults", assume the tuning defaults and skip ahead — but still confirm the credentials, since rollouts fail without them. Don't ask about preloads or tuning before you have the skill + the rollout basics.
 
