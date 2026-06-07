@@ -39,11 +39,11 @@ Ask in this order, waiting for each answer before the next:
 2. **What does good look like?** What an agent should reliably accomplish with it, and any behaviors/gotchas the skill is meant to enforce.
 3. **Where do rollouts run?** The backend — default `docker`; alternatives `e2b`, `daytona`, `runloop`, `modal`. (One question, with the default offered.)
 4. **Which agent + model?** Default `claude-code` on a current model (e.g. `anthropic/claude-opus-4-8`). Other agents: `codex`, `pi`, `opencode`.
-5. **Credentials** — once you know the backend + agent, name the keys that must be set and confirm they're present. **Never ask for or print a key value — only confirm it's exported.**
-   - **Backend key** (read by the Harbor CLI on the host, *not* injected into the sandbox, so it does NOT go in the config): `e2b` → `E2B_API_KEY`, `daytona` → `DAYTONA_API_KEY`, `runloop` → `RUNLOOP_API_KEY`, `modal` → `MODAL_TOKEN`. `docker`/local → none. Ask e.g. "is `E2B_API_KEY` exported in the shell you're running pi from?"
-   - **Model-provider key** (passed *into* the sandbox for the rollout agent → add its name to `rollout.setup.env`): Anthropic / `claude-code` → `ANTHROPIC_API_KEY`; OpenAI / `codex` → `OPENAI_API_KEY`; etc. Confirm it's set in the host env too.
+5. **Credentials** — once you know the backend + agent, work out which keys are required and **check them yourself** with a shell command — don't ask the user to confirm something you can verify. Check presence only, never print a value, e.g. `for k in E2B_API_KEY ANTHROPIC_API_KEY; do [ -n "${!k}" ] && echo "$k set" || echo "$k MISSING"; done`.
+   - **Backend key** (read by the Harbor CLI on the host, *not* injected into the sandbox, so it does NOT go in the config): `e2b` → `E2B_API_KEY`, `daytona` → `DAYTONA_API_KEY`, `runloop` → `RUNLOOP_API_KEY`, `modal` → `MODAL_TOKEN`. `docker`/local → none.
+   - **Model-provider key** (passed *into* the sandbox for the rollout agent → add its name to `rollout.setup.env`): Anthropic / `claude-code` → `ANTHROPIC_API_KEY`; OpenAI / `codex` → `OPENAI_API_KEY`; etc.
    
-   Don't move on to rollouts until the required keys are confirmed.
+   Only **ask the user** for a key that your check shows is **missing** (ask them to `export` it in the shell running pi). Don't move on to rollouts until the required keys are present.
 6. **Anything else to preload?** One open question — *not* a checklist, and separate from the credentials above. Most skills need nothing beyond the base image. Only if they say yes, drill into: companion skills, apt/npm/pip packages, CLIs, other env var names, setup commands, and a non-default base image.
 7. **Tuning** — present these as a **bulleted list, one bullet per setting** — explanation first, default last. **Do NOT compress them into a single sentence with parenthetical labels** (that's what's confused users). The goal here is to *teach how skillopt works*, briefly. Lead in with one line — "a few knobs, all have sensible defaults" — then the bullets, then accept "defaults are fine". Use roughly this (adapt the wording, keep the substance):
 
