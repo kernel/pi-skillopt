@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import * as path from "node:path";
 import test from "node:test";
 
-import { stageInputs } from "../extensions/pi-skillopt/index.ts";
+import { stageInputs, applyTaskNamespace } from "../extensions/pi-skillopt/index.ts";
 
 function setup() {
   const root = fs.mkdtempSync(path.join(tmpdir(), "skillopt-stage-"));
@@ -63,6 +63,53 @@ test("stageInputs leaves inputs already inside the workspace untouched", () => {
 
     assert.equal(JSON.stringify(cfg), before); // paths unchanged
     assert.ok(!fs.existsSync(path.join(workspace, "skills", "fmt", "skills"))); // no nested re-copy
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("applyTaskNamespace swaps the task org but not author names, and is idempotent", () => {
+  const d = fs.mkdtempSync(path.join(tmpdir(), "skillopt-ns-"));
+  try {
+    fs.mkdirSync(path.join(d, "t1"), { recursive: true });
+    fs.writeFileSync(
+      path.join(d, "t1", "task.toml"),
+      'schema_version = "1.3"\n\n[task]\nname = "skillopt-hello/t1"\n[[task.authors]]\nname = "pi-skillopt"\n',
+    );
+    applyTaskNamespace(d, "kernel");
+    let toml = fs.readFileSync(path.join(d, "t1", "task.toml"), "utf-8");
+    assert.match(toml, /name = "kernel\/t1"/);
+    assert.match(toml, /name = "pi-skillopt"/); // author name (no slash) untouched
+    // idempotent
+    applyTaskNamespace(d, "kernel");
+    toml = fs.readFileSync(path.join(d, "t1", "task.toml"), "utf-8");
+    assert.match(toml, /name = "kernel\/t1"/);
+    assert.doesNotMatch(toml, /kernel\/kernel/);
+  } finally {
+    fs.rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test("stageInputs applies taskNamespace to the staged (copied) pack only", () => {
+  const root = fs.mkdtempSync(path.join(tmpdir(), "skillopt-ns2-"));
+  const workspace = path.join(root, "workspace");
+  const source = path.join(root, "source");
+  fs.mkdirSync(workspace, { recursive: true });
+  fs.mkdirSync(path.join(source, "skills", "fmt"), { recursive: true });
+  fs.writeFileSync(path.join(source, "skills", "fmt", "SKILL.md"), "# seed\n");
+  fs.mkdirSync(path.join(source, "tasks", "t1"), { recursive: true });
+  fs.writeFileSync(path.join(source, "tasks", "t1", "task.toml"), '[task]\nname = "skillopt-hello/t1"\n');
+  try {
+    const cfg = {
+      skillUnderTest: path.join(source, "skills", "fmt", "SKILL.md"),
+      taskPack: path.join(source, "tasks"),
+      taskNamespace: "kernel",
+    };
+    fs.writeFileSync(path.join(workspace, "skillopt.config.json"), JSON.stringify(cfg));
+    stageInputs(workspace, cfg);
+    assert.match(fs.readFileSync(path.join(workspace, "tasks", "t1", "task.toml"), "utf-8"), /name = "kernel\/t1"/);
+    // source pack untouched
+    assert.match(fs.readFileSync(path.join(source, "tasks", "t1", "task.toml"), "utf-8"), /name = "skillopt-hello\/t1"/);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

@@ -44,6 +44,8 @@ Ask in this order, waiting for each answer before the next:
    - **Model-provider key** (passed *into* the sandbox for the rollout agent → add its name to `rollout.setup.env`): Anthropic / `claude-code` → `ANTHROPIC_API_KEY`; OpenAI / `codex` → `OPENAI_API_KEY`; etc.
    
    Only **ask the user** for a key that your check shows is **missing** (ask them to `export` it in the shell running pi). Don't move on to rollouts until the required keys are present.
+
+   **Team-scoped backends (e2b):** if a rollout later fails with "namespace `<org>` must match your team", set `taskNamespace: "<your-team>"` in `skillopt.config.json` once — staging rewrites every task's org to it on each run, so you never hand-edit `task.toml` (those edits get overwritten by the next stage anyway). Harbor 0.13.x handles this automatically for local-path tasks; this only bites older Harbor.
 6. **Anything else to preload?** One open question — *not* a checklist, and separate from the credentials above. Most skills need nothing beyond the base image. Only if they say yes, drill into: companion skills, apt/npm/pip packages, CLIs, other env var names, setup commands, and a non-default base image.
 7. **Tuning** — present these as a **bulleted list, one bullet per setting** — explanation first, default last. **Do NOT compress them into a single sentence with parenthetical labels** (that's what's confused users). The goal here is to *teach how skillopt works*, briefly. Lead in with one line — "a few knobs, all have sensible defaults" — then the bullets, then accept "defaults are fine". Use roughly this (adapt the wording, keep the substance):
 

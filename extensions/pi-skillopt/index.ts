@@ -639,12 +639,30 @@ export function stageInputs(dir: string, cfg: SkillOptConfig): void {
   // Task pack: copy the whole pack (task ids = subdir names, preserved).
   const pack = resolve(dir, cfg.taskPack);
   if (!within(pack)) {
-    fs.cpSync(pack, path.join(dir, "tasks"), { recursive: true });
+    const dest = path.join(dir, "tasks");
+    fs.cpSync(pack, dest, { recursive: true });
     cfg.taskPack = "./tasks";
+    // Rewrite each task's org to the configured namespace (e.g. an e2b team) on the
+    // STAGED copy — done every stage so it's durable, unlike a hand-edit the next
+    // run would overwrite. Only the copy is touched; the source pack is never mutated.
+    if (cfg.taskNamespace) applyTaskNamespace(dest, cfg.taskNamespace);
     changed = true;
   }
 
   if (changed) fs.writeFileSync(configPath(dir), JSON.stringify(cfg, null, 2));
+}
+
+/** Rewrite every `[task].name = "<org>/<id>"` in a staged pack to `<ns>/<id>`. */
+export function applyTaskNamespace(tasksDir: string, ns: string): void {
+  for (const entry of fs.readdirSync(tasksDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const toml = path.join(tasksDir, entry.name, "task.toml");
+    if (!fs.existsSync(toml)) continue;
+    const text = fs.readFileSync(toml, "utf-8");
+    // Match the org/id task name (it has a slash; author names don't), swap the org.
+    const rewritten = text.replace(/^(\s*name\s*=\s*")[^"/]+\/([^"]+")/m, `$1${ns}/$2`);
+    if (rewritten !== text) fs.writeFileSync(toml, rewritten);
+  }
 }
 
 /** Steps since the last accept_new_best (0 = the latest step set a new best). */
