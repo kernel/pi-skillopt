@@ -46,7 +46,7 @@ export interface RolloutSetup {
 export type GateMetric = "hard" | "soft" | "mixed";
 export type LrSchedule = "constant" | "linear" | "cosine";
 
-/** Persisted to skillopt.rollout.yaml — the full description of an optimization run. */
+/** Persisted as JSON to skillopt.config.json — the full description of an optimization run. */
 export interface SkillOptConfig {
   /** Human-readable session name. */
   name: string;
@@ -66,9 +66,6 @@ export interface SkillOptConfig {
   /** Re-roll the selection split this many times and average (noise control). Default 1. */
   selectionSamples?: number;
   maxSteps?: number | null;
-  epochs?: number;
-  /** Enable epoch-boundary slow-update guidance into a protected region (v1). */
-  slowUpdate?: boolean;
   workingDir?: string;
 }
 

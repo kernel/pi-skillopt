@@ -48,6 +48,9 @@ export function reconstruct(path: string): ReconstructedState | null {
   }
   if (!header) return null;
 
+  // segment is the 1-based config-header count; steps are tagged with count - 1.
+  // Filter to the current segment so a re-init (new header → new segment) starts a
+  // fresh baseline and older steps are ignored.
   const inSegment = steps.filter((s) => s.segment === segment - 1 || s.segment === segment);
   const last = inSegment[inSegment.length - 1];
   return {
@@ -64,6 +67,8 @@ export function reconstruct(path: string): ReconstructedState | null {
 }
 
 /** Median Absolute Deviation noise floor over selection scores; null if < 3 points. */
+// `baseline` is step 0's current_score (the first logged score), not a pre-run zero:
+// confidence is best-improvement vs the selection-noise floor, measured from that first score.
 export function confidence(steps: StepEntry[], metricKey: "sel_hard" | "sel_soft", baseline: number, best: number): number | null {
   const vals = steps.map((s) => s[metricKey]).filter((v) => Number.isFinite(v));
   if (vals.length < 3) return null;

@@ -121,7 +121,6 @@ train N · selection N · test N  (test is OFF LIMITS until finalize)
 - Bounded edits only (append / insert_after / replace / delete a span).
 - Keep it tight: prefer replace/delete over append, merge redundant rules, cut guidance that didn't help. A shorter, sharper skill beats a longer one — the skill must not grow unboundedly across steps.
 - Generalize: never hardcode answers/ids/paths for specific tasks into the skill.
-- Respect the <!-- SLOW_UPDATE_START/END --> region if present.
 
 ## What's been tried
 <Accepted edits, dead ends, and which failure classes remain. Keep current.>

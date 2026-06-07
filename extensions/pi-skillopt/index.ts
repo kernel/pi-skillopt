@@ -394,6 +394,9 @@ export default function skilloptExtension(pi: ExtensionAPI) {
       const persisted = reconstruct(jsonlPath(dir));
       const priorSteps = persisted?.steps ?? [];
       const stepNum = priorSteps.length + 1;
+      // Reverse-scan for the last accepted step (rejects don't snapshot, so their
+      // skill_version is empty): that step's snapshot is the current in-place
+      // baseline — what to revert to on the next reject.
       const lastAccepted = [...priorSteps].reverse().find((s) => s.action !== "reject" && s.skill_version);
       const baseline: GateState = {
         currentSkill: skillAbs,
@@ -423,7 +426,8 @@ export default function skilloptExtension(pi: ExtensionAPI) {
 
       let snapshot: string | undefined;
       if (outcome.action === "reject") {
-        // Revert the working skill to the last accepted version (or the seed).
+        // Revert to the last accepted snapshot, or fall back to the seed best_skill.md
+        // when nothing has been accepted yet (no prior snapshot to restore).
         const revertTo = lastAccepted?.skill_version
           ? path.join(snapshotDir(dir), lastAccepted.skill_version)
           : bestSkillPath(dir);
@@ -438,6 +442,8 @@ export default function skilloptExtension(pi: ExtensionAPI) {
       const entry: StepEntry = {
         type: "step",
         step: stepNum,
+        // Tag with (config-header count) - 1 so the first run is segment 0; a re-init
+        // adds a new header → new segment, and reconstruct() filters to it for a fresh baseline.
         segment: (persisted?.segment ?? 1) - 1,
         timestamp: Date.now(),
         edit: params.edit,
@@ -511,7 +517,7 @@ export default function skilloptExtension(pi: ExtensionAPI) {
     const note =
       "\n\n## SkillOpt Mode (ACTIVE)" +
       "\nYou are optimizing a SKILL.md via gated Harbor rollouts. Each iteration: reflect on failing train/selection trajectories, apply <= edit_budget bounded edits to the skill, run_rollout('selection'), then log_step — the gate keeps or reverts." +
-      "\nKeep the skill TIGHT: prefer replacing or deleting lines over appending, merge redundant rules, and remove guidance that didn't help — a shorter, sharper skill is better. The skill should not grow unboundedly across steps." +
+      "\n" + PRUNE_NOTE +
       "\nNever roll out 'test' (it is the held-out final number). Never hardcode task-specific answers into the skill. Stop when the selection score plateaus (log_step will tell you) or you are interrupted.";
     return { systemPrompt: event.systemPrompt + note };
   });
