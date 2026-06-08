@@ -28,6 +28,11 @@ For each capability, write **1–3 concrete tasks** an agent would do with the s
 Aim for ~12–30 tasks total for a first pack — enough to split 60/20/20 and still have a meaningful selection set.
 
 ### 3. Define verifiers (the reward)
+
+**This is the crux — design it WITH the user, don't invent it solo.** The reward defines what "better" means; a vague or gameable reward optimizes the skill to cheat. For each capability, settle two things with the user, then confirm before generating tasks:
+- **What does success look like concretely** (the outcome), and **which skill behaviors must hold** (adherence — drawn from the skill's own gotchas)?
+- **Is that programmatically checkable?** If yes → a scripted check (preferred — objective, cheap, deterministic). If success is inherently a judgment ("is this summary good?", "is the explanation clear?") → an **LLM-as-judge** with a rubric you write *together*. Don't guess the rubric; elicit the criteria from the user.
+
 Each task is scored by its `tests/test.sh`, which writes one or more rewards. You want two kinds:
 
 - **Outcome rewards** — did the agent achieve the goal? (output matches, file exists, endpoint returns expected state, exit code, etc.) Objective and scriptable.
@@ -66,7 +71,7 @@ Scaffold the canonical shape with `harbor init <org>/<task-id> -t` and fill it i
   - `/logs/verifier/reward.txt` — a single float.
   
   The extension reads these back, averages the values into `soft`, and treats "all rewards ≥ the pass threshold" as `hard`. **Always write a reward file, even on internal error** — default to a `0` reward up front (or `trap`/fallback) so a crashing verifier scores 0 instead of producing "no reward file found", which errors the whole trial.
-- **`solution/solve.sh`** — the reference solution. Not required, but if you provide it the `oracle` agent will run it instead of a model, which is how you validate the pack for free (step 5).
+- **`solution/solve.sh`** — a reference solution. **Optional**, and only feasible when you can mechanically produce the gold output (easy for crisp tasks, often infeasible for open-ended/agentic ones). When present, the `oracle` agent runs it *instead of a model* and the verifier scores it — a free way to validate the pack's plumbing (step 5). It plays no part in a real optimization run (that scores a real agent's output via the verifier), so skip it — and `oracle` — when a clean solution isn't practical.
 
 Do **not** put the skill being optimized into the task — it's injected separately by Harbor (the rollout env's `agents[].skills`), so the same pack scores any candidate version.
 
@@ -83,6 +88,31 @@ json.dump({"outcome": outcome, "adherence": adherence},
           open("/logs/verifier/reward.json", "w"))
 PY
 ```
+
+For an **LLM-as-judge** reward (unscriptable quality), `test.sh` calls a model with your rubric and parses a 0–1 score. Put the judge's API key in `[verifier.env]` in `task.toml` (e.g. `ANTHROPIC_API_KEY`), and set the task's `network_mode` so the provider host is reachable:
+
+```bash
+#!/bin/bash
+# curl + python3 pre-baked; ANTHROPIC_API_KEY comes from [verifier.env].
+python3 - <<'PY'
+import json, os, pathlib, urllib.request
+out = pathlib.Path("/app/answer.txt").read_text() if pathlib.Path("/app/answer.txt").exists() else ""
+rubric = "Score 0.0-1.0 how well the answer <your criteria>. Reply with ONLY the number."
+body = {"model": "claude-haiku-4-5", "max_tokens": 8,
+        "messages": [{"role": "user", "content": f"{rubric}\n\nANSWER:\n{out}"}]}
+req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=json.dumps(body).encode(),
+        headers={"x-api-key": os.environ["ANTHROPIC_API_KEY"], "anthropic-version": "2023-06-01", "content-type": "application/json"})
+try:
+    text = json.load(urllib.request.urlopen(req))["content"][0]["text"]
+    score = max(0.0, min(1.0, float(text.strip().split()[0])))
+except Exception:
+    score = 0.0  # always write a reward, even when the judge call fails
+pathlib.Path("/logs/verifier").mkdir(parents=True, exist_ok=True)
+json.dump({"quality": score}, open("/logs/verifier/reward.json", "w"))
+PY
+```
+
+LLM-judge caveats: it's **noisier and gameable** — run the gate in `soft`/`mixed`, raise `selectionSamples` to denoise, and use a small cheap judge model. Always prefer a scripted check when success is objectively checkable; reserve the judge for genuinely unscriptable quality.
 
 ### 5. Validate, then hand off for review
 Validate the wiring before scaling up — a malformed task wastes a whole training run:
