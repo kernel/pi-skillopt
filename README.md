@@ -6,7 +6,7 @@
 
 </div>
 
-*Bring a skill. pi-skillopt generates the task pack, rolls the skill out on real tasks via [Harbor](https://github.com/harbor-framework/harbor), reflects on failures, applies bounded edits, and keeps an edit only if it strictly improves a held-out score.*
+*Bring a skill. pi-skillopt builds a set of scored tasks for it, rolls the skill out on them via [Harbor](https://github.com/harbor-framework/harbor), reflects on failures, applies bounded edits, and keeps an edit only if it strictly improves a held-out score.*
 
 An extension for **[pi](https://pi.dev/)**. Inspired in structure by [pi-autoresearch](https://github.com/davebcn87/pi-autoresearch): a domain-agnostic **extension** provides the machinery, **skills** encode the workflow. The optimization target is a single skill document, the benchmark is a Harbor rollout, and "keep/revert" is SkillOpt's validation gate.
 
@@ -38,7 +38,7 @@ The agent walks you through:
    - **agent**: `claude-code` · `codex` · `pi` · `opencode` · …
    - **model**: e.g. `anthropic/claude-opus-4-8`
    - **preloads**: other skills, npm/apt/pip packages, CLIs, env/secrets (names only), setup commands
-3. **Task pack** — if you don't have one, `/skill:skillopt-taskpack` generates it *from the skill itself* (derives tasks + objective verifiers), then pauses for your review.
+3. **Task pack** — the set of tasks your skill is scored on, each with an automatic *verifier* that grades the run (i.e. the eval). Don't have one? `/skill:skillopt-taskpack` derives it *from the skill itself*, then pauses for your review.
 4. **Baseline + loop** — `run_rollout` → reflect on failures → edit → `log_step` (gate) → repeat.
 5. **Finish** — `/skill:skillopt-finalize` → `best_skill.md` + the held-out **test** number + a clean diff.
 
