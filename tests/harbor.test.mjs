@@ -48,6 +48,10 @@ test("parseTrialResults reads per-trial rewards in the real Harbor shape", () =>
   assert.deepEqual([pt[1].hard, pt[1].soft], [0, 0.5]); // adherence fails -> not hard
   assert.deepEqual([pt[2].hard, pt[2].soft], [0, 0]); // errored trial
   assert.equal(pt[0].trajectory, "/jobs/j1/t1__a");
+  // a trial with no rewards is flagged errored (infra fault, not a graded 0);
+  // a scored trial is not, even when it failed.
+  assert.equal(pt[2].errored, true);
+  assert.equal(pt[1].errored, false);
 });
 
 test("primaryReward lets a task pass on its primary axis", () => {

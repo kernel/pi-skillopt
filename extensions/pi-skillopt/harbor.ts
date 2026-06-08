@@ -171,10 +171,26 @@ export async function runRollout(req: RolloutRequest): Promise<RolloutResult> {
     primaryReward: req.primaryReward,
   });
 
-  const hard = mean(perTask.map((t) => t.hard));
-  const soft = mean(perTask.map((t) => t.soft));
-  const failing = perTask.filter((t) => t.hard === 0).slice(0, req.sampleFailures ?? 4);
-  return { split: req.split, hard, soft, perTask, failing };
+  const errored = perTask.filter((t) => t.errored);
+  const scored = perTask.filter((t) => !t.errored);
+  // Every trial errored = the verifier never ran anywhere (bad model id, missing
+  // backend extra, build/sandbox failure). That's an infra fault, not a 0% skill
+  // — surfacing it as a real score would have the agent "optimize" against noise.
+  if (perTask.length > 0 && scored.length === 0) {
+    const tasks = errored.map((t) => t.taskId).join(", ");
+    throw new Error(
+      `all ${errored.length} trial(s) errored — the verifier produced no reward for any task ` +
+        `(${tasks}). This is an infra failure, not a skill failure: check the agent model id, ` +
+        `the backend extra (e.g. 'uv tool install harbor[<backend>]'), and credentials. ` +
+        `Inspect the trial logs under ${jobDir}.`,
+    );
+  }
+  // Score over the trials that actually ran; errored trials are excluded so a
+  // transient infra blip can't deflate the gate signal.
+  const hard = scored.length ? mean(scored.map((t) => t.hard)) : 0;
+  const soft = scored.length ? mean(scored.map((t) => t.soft)) : 0;
+  const failing = scored.filter((t) => t.hard === 0).slice(0, req.sampleFailures ?? 4);
+  return { split: req.split, hard, soft, perTask, failing, errored: errored.length };
 }
 
 export interface ParseOpts {
@@ -216,10 +232,13 @@ export function parseTrialResults(trials: TrialResult[], opts: ParseOpts): PerTa
   return trials.map((t): PerTaskResult => {
     const rewards = normalizeRewards(t?.verifier_result?.rewards);
     const values = Object.values(rewards);
+    // No rewards at all = the verifier never produced a score (build/agent/infra
+    // error), NOT a graded 0. Flag it so it can be excluded from the gate signal.
+    const errored = values.length === 0;
     const soft = values.length ? clamp01(mean(values)) : 0;
     const hard: 0 | 1 = isPass(rewards, opts) ? 1 : 0;
     const trajectory = t.trial_name ? path.join(opts.jobDir, String(t.trial_name)) : undefined;
-    return { taskId: taskIdOf(t), hard, soft, rewards, trajectory };
+    return { taskId: taskIdOf(t), hard, soft, rewards, trajectory, errored };
   });
 }
 
@@ -267,7 +286,12 @@ function defaultJobName(split: string): string {
 
 function spawnHarbor(bin: string, args: string[], timeoutMs: number): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
+    // NO_COLOR keeps Harbor's Rich ANSI/box-drawing out of the captured stderr,
+    // so the error we surface is readable plain text.
+    const child = spawn(bin, args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, NO_COLOR: "1" },
+    });
     let err = "";
     const timer = setTimeout(() => {
       child.kill("SIGTERM");
@@ -284,7 +308,8 @@ function spawnHarbor(bin: string, args: string[], timeoutMs: number): Promise<vo
       // Harbor exits 0 even when individual trials error; we read result.json
       // regardless. A non-zero exit means the job could not run at all.
       if (code !== 0) {
-        reject(new Error(`harbor exited ${code}: ${err.trim().slice(0, 800)}`));
+        // Python tracebacks put the real exception at the BOTTOM — keep the tail.
+        reject(new Error(`harbor exited ${code}: ${err.trim().slice(-1500)}`));
         return;
       }
       resolve();

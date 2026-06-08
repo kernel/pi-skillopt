@@ -358,8 +358,12 @@ export default function skilloptExtension(pi: ExtensionAPI) {
         }
       }
 
+      const scoredCount = rollout.perTask.length - rollout.errored;
       const lines = [
-        `Rollout on ${params.split}: hard ${pct(rollout.hard)} · soft ${rollout.soft.toFixed(3)} (${rollout.perTask.length} tasks)`,
+        `Rollout on ${params.split}: hard ${pct(rollout.hard)} · soft ${rollout.soft.toFixed(3)} (${scoredCount} tasks scored)`,
+        rollout.errored
+          ? `\n${rollout.errored} trial(s) errored (verifier never ran) — excluded from the score, NOT a skill failure. Check the backend/model/credentials if this persists.`
+          : ``,
         rollout.failing.length ? `\nFailing tasks to reflect on:` : `\nNo failures in this split.`,
         ...rollout.failing.map((f) => `  - ${f.taskId}: ${JSON.stringify(f.rewards)}${f.trajectory ? `  trajectory: ${f.trajectory}` : ""}`),
         saturated
@@ -368,7 +372,7 @@ export default function skilloptExtension(pi: ExtensionAPI) {
             ? `\nPropose <= edit_budget bounded edits to the skill that fix the COMMON failure pattern, then run_rollout('selection') and log_step.`
             : ``,
       ];
-      return result(lines.join("\n"), { rollout, saturated });
+      return result(lines.filter(Boolean).join("\n"), { rollout, saturated });
     },
   });
 

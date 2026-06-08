@@ -93,6 +93,8 @@ export interface PerTaskResult {
   rewards: Record<string, number>;
   /** Path to the captured ATIF trajectory for this run (used as the reflection "gradient"). */
   trajectory?: string;
+  /** The verifier produced no rewards (infra/agent error, not a graded failure) — excluded from the score. */
+  errored?: boolean;
 }
 
 export interface RolloutResult {
@@ -104,6 +106,8 @@ export interface RolloutResult {
   perTask: PerTaskResult[];
   /** A sampled subset of failing trajectories, surfaced to the agent as the gradient. */
   failing: PerTaskResult[];
+  /** Trials whose verifier didn't run (infra/agent errors) — excluded from hard/soft. */
+  errored: number;
 }
 
 export type GateAction = "accept_new_best" | "accept" | "reject";

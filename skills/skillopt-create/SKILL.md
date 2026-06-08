@@ -104,7 +104,8 @@ The task pack defines what "better" *means*, so it is never a detail to assume. 
 ## Step 3 — initialize and baseline
 
 1. **Preflight the rollout tooling** (do this *before* any rollout so the first one doesn't fail): ensure the Harbor CLI **and the backend extra** are installed with `uv tool install 'harbor[<backend>]'` — idempotent, safe to run every session — e.g. `uv tool install 'harbor[e2b]'`. A missing backend extra is the classic "the first `run_rollout` errored" cause; this prevents it instead of probing after the fact.
-2. `git checkout -b skillopt/<skill-name>-<date>` (so accepted snapshots are diffable).
+   - **e2b tier gotcha:** Harbor's e2b adapter requests a 24-hour sandbox lifetime, which the e2b **hobby tier rejects** with `400: Timeout cannot be greater than 1 hours` — every rollout then errors. Use a Pro-tier `E2B_API_KEY`, or cap `timeout` in the installed `harbor/environments/e2b.py`. (The `Unsupported instruction: COMMENT` warnings e2b prints on Dockerfile `#` lines are harmless.)
+2. Make accepted snapshots diffable with a branch — but the working dir is often a fresh, non-git folder, so guard for that: if `git rev-parse --git-dir` fails, `git init` first, then `git checkout -b skillopt/<skill-name>-<date>`. This is only a convenience for diffing; if git is unavailable or init fails, say so and continue — the loop doesn't depend on it.
 3. Write `skillopt.md` (template below) — the living session doc.
 4. `init_optimization` → `run_rollout('selection')` → `log_step` as the baseline (edit: "baseline").
 5. Also `run_rollout('train')` once to see where the skill actually fails.
