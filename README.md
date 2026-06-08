@@ -101,7 +101,7 @@ A run is **self-contained in the working directory** (where pi was launched). `i
 | `skillopt.snapshots/` | `skill_vNNNN.md` per accepted step |
 
 ## What's deliberately generic
-No assumptions about what the skill does. Skill, task pack, agent, model, backend, and verifiers are all user-supplied. `examples/hello-harbor/` runs the whole shape on a toy skill with zero domain code.
+No assumptions about what the skill does. Skill, task pack, agent, model, backend, and verifiers are all user-supplied. `examples/hello-harbor/` runs the whole shape on a toy skill with zero domain code. `examples/reversible-migrations/` and `examples/jq-surgeon/` are harder skills that ship *without* a task pack, so they exercise `skillopt-taskpack` — deriving the tasks and verifiers from the skill itself.
 
 ## Roadmap (v1+)
 - one live pi smoke session to confirm the runtime fires the wired events (idle auto-loop, compaction-resume, before-agent-start) and the agent drives the loop end to end (the wiring already typechecks against the real pi API and is unit-tested)

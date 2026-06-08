@@ -1,0 +1,19 @@
+{
+  "name": "optimize jq-surgeon",
+  "skillUnderTest": "./skills/jq-surgeon/SKILL.md",
+  "taskPack": "./tasks",
+  "rollout": {
+    "backend": "docker",
+    "agent": "claude-code",
+    "model": "anthropic/claude-opus-4-8",
+    "setup": { "env": ["ANTHROPIC_API_KEY"] }
+  },
+  "splits": { "train": [], "selection": [], "test": [] },
+  "editBudget": 3,
+  "minEditBudget": 1,
+  "lrSchedule": "cosine",
+  "gateMetric": "mixed",
+  "mixedWeight": 0.5,
+  "selectionSamples": 3,
+  "maxSteps": 20
+}
