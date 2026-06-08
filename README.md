@@ -47,6 +47,15 @@ extra and export your key, e.g. e2b: `uv tool install 'harbor[e2b]'` +
 > `timeout` in `harbor/environments/e2b.py`. Also, e2b's Dockerfile parser warns
 > `Unsupported instruction: COMMENT` on `#` comment lines — harmless, the
 > template still builds.
+>
+> Two more that actually block runs (a Pro key alone doesn't fix them):
+> **`AgentSetupTimeoutError` after ~360s** — `claude-code` installs Node/npm/curl
+> inside the sandbox, and on a bare `ubuntu:24.04` base that exceeds the
+> agent-setup timeout; pre-bake `nodejs`/`npm`/`curl` into each task's
+> `environment/Dockerfile`. And a **template build-then-use race** —
+> `404: tag 'default' does not exist for template …` / `BuildException: build was
+> cancelled` — when many task templates build concurrently; pre-build/warm
+> templates, lower `n_concurrent_trials`, or raise the per-rollout timeout.
 
 ## Use it
 

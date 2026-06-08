@@ -110,8 +110,8 @@ const RunRolloutParams = Type.Object({
 
 const LogStepParams = Type.Object({
   edit: Type.String({ description: "Short description of the bounded edit(s) you applied to the skill this step." }),
-  sel_hard: Type.Number({ description: "Candidate hard score on the SELECTION split (from a run_rollout on 'selection')." }),
-  sel_soft: Type.Optional(Type.Number({ description: "Candidate soft score on the SELECTION split. Required when gate_metric is soft/mixed." })),
+  sel_hard: Type.Number({ description: "Candidate hard score on the SELECTION split as a 0–1 fraction (e.g. 1.0 = 100%), exactly as run_rollout('selection') returns it. NOT a percentage." }),
+  sel_soft: Type.Optional(Type.Number({ description: "Candidate soft score on the SELECTION split as a 0–1 fraction. Required when gate_metric is soft/mixed." })),
 });
 
 // --- extension -------------------------------------------------------------
@@ -318,6 +318,14 @@ export default function skilloptExtension(pi: ExtensionAPI) {
             "During the loop use 'train' (reflect) and 'selection' (gate). If you are finalizing, call run_rollout with final: true.",
         );
       }
+      // Once the session has plateaued/saturated on selection, more train/selection
+      // rollouts can't move the gate — the loop is done. (In-memory flag, so this only
+      // fires within a live session; finalize's 'test' rollout is exempt.)
+      if (params.split !== "test" && rt(ctx).plateaued) {
+        return result(
+          "This session already plateaued on selection (the gate has no headroom left) — the loop is done. Run /skill:skillopt-finalize instead of more rollouts; to go further, widen or harden the task pack, then /skillopt clear.",
+        );
+      }
       const ids = cfg.splits[params.split];
       if (!ids?.length) return result(`Split "${params.split}" is empty.`);
 
@@ -358,16 +366,19 @@ export default function skilloptExtension(pi: ExtensionAPI) {
         }
       }
 
-      const scoredCount = rollout.perTask.length - rollout.errored;
+      // perTask is one entry per trial (tasks × selectionSamples), so report both the
+      // distinct task count (breadth) and the run count (denoising depth).
+      const scoredRuns = rollout.perTask.length - rollout.errored;
+      const scoredTasks = new Set(rollout.perTask.filter((t) => !t.errored).map((t) => t.taskId)).size;
       const lines = [
-        `Rollout on ${params.split}: hard ${pct(rollout.hard)} · soft ${rollout.soft.toFixed(3)} (${scoredCount} tasks scored)`,
+        `Rollout on ${params.split}: hard ${pct(rollout.hard)} · soft ${rollout.soft.toFixed(3)} (${scoredTasks} task(s), ${scoredRuns} run(s) scored)`,
         rollout.errored
           ? `\n${rollout.errored} trial(s) errored (verifier never ran) — excluded from the score, NOT a skill failure. Check the backend/model/credentials if this persists.`
           : ``,
         rollout.failing.length ? `\nFailing tasks to reflect on:` : `\nNo failures in this split.`,
         ...rollout.failing.map((f) => `  - ${f.taskId}: ${JSON.stringify(f.rewards)}${f.trajectory ? `  trajectory: ${f.trajectory}` : ""}`),
         saturated
-          ? `\nSelection is at the ceiling (${pct(rollout.hard)}) — no headroom left for the gate to reward, so the loop is done. STOP and run /skill:skillopt-finalize; to gain more, widen or harden the task pack.`
+          ? `\nSelection is at the ceiling (${pct(rollout.hard)}) — no headroom left for the gate to reward, so the loop is done. If you haven't logged a baseline step yet, call log_step now (edit: "baseline") so the run has a recorded score; then STOP and run /skill:skillopt-finalize. To gain more, widen or harden the task pack.`
           : params.split === "train"
             ? `\nPropose <= edit_budget bounded edits to the skill that fix the COMMON failure pattern, then run_rollout('selection') and log_step.`
             : ``,
@@ -388,6 +399,14 @@ export default function skilloptExtension(pi: ExtensionAPI) {
       const dir = workDir(ctx);
       const cfg = readConfig(dir);
       if (!cfg) return result("No active session.");
+      // Scores are 0–1 fractions, as run_rollout returns them. A value >1 means a
+      // percentage slipped in (e.g. 100 for 1.0), which corrupts the gate — under
+      // mixed/soft it blends with a 0–1 soft term and dominates it. Reject early.
+      if (params.sel_hard > 1 || (params.sel_soft ?? 0) > 1) {
+        return result(
+          "Scores are 0–1 fractions, not percentages. run_rollout reports e.g. hard 1.0 (=100%) — pass sel_hard: 1.0, not 100. Re-call log_step with the 0–1 values.",
+        );
+      }
       const r = rt(ctx);
       const metric: GateMetric = cfg.gateMetric ?? "hard";
       const skillAbs = resolve(dir, cfg.skillUnderTest);

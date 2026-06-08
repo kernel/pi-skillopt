@@ -33,6 +33,10 @@ Therefore: write `skillopt.config.json` in the working dir, and **do not set `wo
 
 **Do NOT dump the whole config and ask the user to fill in the blanks.** Ask **one thing at a time**, carry a sensible default into every question so most answers are a quick "yes", and infer from context before asking. Only after you have everything do you show the **assembled config once** for a single confirmation — that's the one time the user sees the full picture.
 
+**Exactly one question per turn** — emit a single `?` and wait for the answer before the next. Don't bundle two into one message (e.g. *what does good look like* together with *which backend/agent/model*), even when you think you can shortcut.
+
+**If `skillopt.config.json` already exists** in the working dir (an example ships one, or you're re-running), do **not** silently adopt it. Summarize what it specifies — backend, agent, model, gate metric — and confirm it's what the user wants before continuing. Pay special attention to the **backend**: it sets which credentials and which tier you'll need, so if it changes (e.g. `docker` → `e2b`) the required keys change too. A pre-existing config is a starting point to confirm, not a settled answer — still walk the questions for anything they want to change, and still show the final assembled config once before writing.
+
 Ask in this order, waiting for each answer before the next:
 
 1. **Which skill?** The path to the `SKILL.md` to optimize (the only file the loop edits). Look in the cwd first; if there's one obvious candidate, propose it — otherwise ask. Don't grab an unrelated SKILL.md just because it's nearby.
@@ -141,7 +145,7 @@ train N · selection N · test N  (test is OFF LIMITS until finalize)
 1. Read the latest failing trajectories (from the last `run_rollout('train')` or `'selection'`).
 2. Identify the **most common** failure pattern across them.
 3. Apply **≤ edit_budget** bounded edits to the skill that fix that pattern — generalizable, not task-specific.
-4. `run_rollout('selection')` → `log_step(edit, sel_hard, sel_soft?)`.
+4. `run_rollout('selection')` → `log_step(edit, sel_hard, sel_soft?)` — pass the **0–1 fractions** `run_rollout` returns (e.g. `1.0`, not `100`); percentages are rejected.
 5. The gate keeps or reverts. Update `skillopt.md`'s "What's been tried".
 
 **Loop rules**

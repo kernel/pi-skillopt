@@ -25,7 +25,9 @@ For each capability, write **1–3 concrete tasks** an agent would do with the s
 - is **runnable in the configured rollout env** (don't invent tools the container won't have);
 - **varies** along the axes the skill cares about (e.g. single-step vs multi-step, simple vs edge-case), so the pack exercises the gotchas, not just the happy path.
 
-Aim for ~12–30 tasks total for a first pack — enough to split 60/20/20 and still have a meaningful selection set.
+Aim for ~15–30 tasks total for a first pack — a 60/20/20 split then yields **at least 3 selection tasks**; fewer (e.g. 12 tasks → 2 selection) trips the gate's thin-selection warning, where noise can look like signal.
+
+**Weighting is structural, not numeric.** Harbor has no per-task weight field — to emphasize the behaviors that matter most, write more (and harder) tasks for them and make sure they land in the **selection** split (that's what the gate scores). Don't invent a `[metadata] weight` knob; it does nothing.
 
 ### 3. Define verifiers (the reward)
 
@@ -124,7 +126,11 @@ Then sanity-check the pack:
 - Every verifier is objective and un-gameable by a generic strong agent **without** the skill — i.e. a baseline run (no skill, or the seed skill) should *not* trivially pass everything. If it does, the task is too easy to show skill value.
 - Tasks are diverse enough to cover the skill's gotchas.
 
-Then **show the user the task list + verifiers and pause for approval.** Once approved, point `skillopt.config.json → taskPack` at `./tasks` and continue with `skillopt-create` step 3.
+Then **show the user the task list + verifiers and pause for approval.** Once approved:
+- point `skillopt.config.json → taskPack` at `./tasks`, and
+- **write your designed split into `skillopt.config.json`'s `splits`** (the three task-id lists). `init_optimization` only derives a random 60/20/20 when `splits` is empty — leave it empty and your `SPLITS.md` grouping is silently discarded. Keep `SPLITS.md` as the human-readable rationale; the `splits` field is what the loop actually uses.
+
+Then continue with `skillopt-create` step 3. If you used a small generator script to emit the task dirs, that's fine — but flag it or remove it before handoff so it isn't mistaken for a task fixture.
 
 ## Anti-patterns
 - **One mega-task.** Split into many small checkable tasks so the gate has signal and the split is meaningful.

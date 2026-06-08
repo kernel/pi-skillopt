@@ -11,7 +11,7 @@ The loop only ever touched the **train** and **selection** splits. `test` has be
 
 ## Steps
 
-1. **Confirm the run is done.** The selection score should have plateaued (several consecutive rejects, or `maxSteps` reached). If it's still climbing, keep looping instead.
+1. **Confirm the run is done.** The selection score should have plateaued (several consecutive rejects, or `maxSteps` reached). If it's still climbing, keep looping instead. **If `skillopt.jsonl` has no step rows** (e.g. the baseline saturated immediately and was never logged), there's nothing optimized to ship — log the baseline first with `log_step(edit: "baseline", …)` so the run has a recorded score, or proceed but state plainly in the report that no optimization steps ran and the test number is just the seed's.
 
 2. **Score the seed on test (baseline).** Check out the original skill (the seed) and `run_rollout(split: 'test', final: true)`. Record `hard`/`soft`. This is the "before". (`final: true` is required — the `test` split is otherwise blocked during the loop.)
 

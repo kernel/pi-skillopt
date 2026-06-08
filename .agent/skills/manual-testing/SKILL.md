@@ -29,6 +29,10 @@ Set `PLUGIN` to the checkout path first (used throughout): `PLUGIN=/home/agent/p
 
 Keys #3 and #4 are the same `ANTHROPIC_API_KEY` when you drive pi with an Anthropic model **and** use the default `claude-code` rollout agent — but they play two distinct roles (driver vs. rollout agent), so name both when you report what's set.
 
+**e2b blockers to expect** (these actually stop runs — and are *not* the hobby-tier `400: Timeout cannot be greater than 1 hours` cap, which a Pro key avoids):
+- **`AgentSetupTimeoutError` after ~360s** — `claude-code` bootstraps Node/npm/curl *inside* the sandbox, and on a bare `ubuntu:24.04` base that blows the agent-setup timeout, erroring every trial. Mitigation: pre-bake `nodejs`/`npm`/`curl` into each task's `environment/Dockerfile` (then claude-code only `npm i`s itself), and/or raise the agent-setup timeout.
+- **template build-then-use race** — `404: tag 'default' does not exist for template '<...>'` and `BuildException: build was cancelled`. Harbor builds N task templates concurrently then immediately creates sandboxes, racing e2b's tag publication; the per-rollout SIGTERM also cancels in-flight builds. Mitigation: pre-build/warm the templates before the run, lower `n_concurrent_trials`, and raise the per-rollout timeout. (This is a Harbor/e2b issue, not a pi-skillopt one — the plugin correctly reports these as "infra failure, not a skill failure".)
+
 **Cheapest possible test:** `docker` backend + the `oracle` rollout agent on `examples/hello-harbor` needs **no model key at all** (oracle runs each task's `solution/solve.sh` instead of a model). It's meant to exercise the whole init → rollout → gate → finalize pipeline for free. **Verify it actually scores before relying on it:** a healthy oracle rollout returns `hard ~100%`. If instead every trial *errors* (you'll see `all N trial(s) errored … infra failure, not a skill failure`, often with agent `exit-code 127` / `RewardFileNotFoundError` in `skillopt.jobs/`), that's a Harbor/docker environment problem — the oracle agent step never ran — **not** the plugin or the skill. In that case fall back to a real agent + key, and flag the broken oracle separately. (The two no-pack examples don't ship `solution/` dirs, so oracle only applies to hello-harbor.)
 
 ---
@@ -53,7 +57,7 @@ The plugin declares both an extension and the three skills in its `package.json`
 
 Verify the plugin loaded:
 - **Interactive:** type `/skill:` and confirm `skillopt-create`, `skillopt-taskpack`, `skillopt-finalize` appear.
-- **Non-interactive:** `pi --mode json -e "$PLUGIN" --skill "$PLUGIN/skills/skillopt-create" -p "list the skills and tools you have available" --thinking off` and grep the output for `skillopt`.
+- **Non-interactive:** `pi --mode json -e "$PLUGIN" --skill "$PLUGIN/skills/skillopt-create" -p "list the skills and tools you have available" --thinking off < /dev/null` and grep the output for `skillopt`. (The `< /dev/null` matters — see Mode B.)
 
 The extension contributes three tools — `init_optimization` (the entry point), `run_rollout`, `log_step`. They become active for the loop once `init_optimization` runs; `init_optimization` is what you call first.
 
@@ -116,13 +120,14 @@ Two driving modes. Pick based on what you're testing.
 Use this to test the **create-skill UX** (the one-question-at-a-time elicitation) and to watch the **timer-driven auto-loop** fire on its own — both are things only a live, persistent runtime exercises. Drive pi inside tmux so you can send keystrokes and read the pane.
 
 ```bash
-tmux new-session -d -s skillopt -x 220 -y 50
-tmux send-keys -t skillopt "cd $RUN && export ANTHROPIC_API_KEY=… && pi -e $PLUGIN --skill $PLUGIN/skills/skillopt-create --skill $PLUGIN/skills/skillopt-taskpack --skill $PLUGIN/skills/skillopt-finalize --model <a-model-you-have-a-key-for> --thinking off --session-dir $RUN/.pi-sessions" Enter
-sleep 5; tmux capture-pane -t skillopt -p          # confirm pi started (no 'Unknown option' / model error)
-tmux send-keys -t skillopt "/skill:skillopt-create" Enter
-sleep 4; tmux capture-pane -t skillopt -p          # read the first question
+S=skillopt-$$-$(date +%s)   # unique session name — a fixed name collides when test agents run in parallel
+tmux new-session -d -s "$S" -x 220 -y 50
+tmux send-keys -t "$S" "cd $RUN && export ANTHROPIC_API_KEY=… && pi -e $PLUGIN --skill $PLUGIN/skills/skillopt-create --skill $PLUGIN/skills/skillopt-taskpack --skill $PLUGIN/skills/skillopt-finalize --model <a-model-you-have-a-key-for> --thinking off --session-dir $RUN/.pi-sessions" Enter
+sleep 5; tmux capture-pane -t "$S" -p          # confirm pi started (no 'Unknown option' / model error)
+tmux send-keys -t "$S" "/skill:skillopt-create" Enter
+sleep 4; tmux capture-pane -t "$S" -p          # read the first question
 # answer one question at a time, reading the pane between each send:
-tmux send-keys -t skillopt "use the format-answer skill in this example" Enter
+tmux send-keys -t "$S" "use the format-answer skill in this example" Enter
 # … continue answering: target outcome, backend (docker), agent+model, creds, preloads (none), tuning (defaults)
 ```
 
@@ -137,10 +142,12 @@ Use this when you want machine-readable output and deterministic stepping. `--mo
 ```bash
 cd "$RUN"
 COMMON="--mode json -e $PLUGIN --skill $PLUGIN/skills/skillopt-create --skill $PLUGIN/skills/skillopt-finalize --model <a-model-you-have-a-key-for> --thinking off --session-dir $RUN/.pi-sessions"
-pi $COMMON -p "/skill:skillopt-create — optimize ./skills/format-answer/SKILL.md, docker backend, claude-code, defaults for everything; the pack is the existing ./tasks. Run the baseline." | tee turn1.ndjson
+pi $COMMON -p "/skill:skillopt-create — optimize ./skills/format-answer/SKILL.md, docker backend, claude-code, defaults for everything; the pack is the existing ./tasks. Run the baseline." < /dev/null | tee turn1.ndjson
 # read turn1.ndjson for the question it asked or the tool calls it made, then continue the SAME session:
-pi $COMMON --continue -p "yes, proceed" | tee turn2.ndjson
+pi $COMMON --continue -p "yes, proceed" < /dev/null | tee turn2.ndjson
 ```
+
+**`< /dev/null` is mandatory here:** `pi -p` reads stdin, and when driven from a tool subshell that leaves stdin open it **hangs at startup** (no output, eventually a `timeout`/exit 124). Redirecting `< /dev/null` closes stdin and it returns immediately.
 
 **Important:** in `-p`/print mode pi disposes the runtime when each prompt resolves, so the extension's internal auto-loop **does not self-fire** between invocations. That's fine for a manual test — **you are the loop**: after each turn, read the NDJSON, then `--continue` with the next "run the next iteration: reflect, edit, run_rollout('selection'), log_step" prompt yourself. (If you want to see the auto-loop fire on its own, use Mode A.)
 
