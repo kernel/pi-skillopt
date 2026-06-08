@@ -2,7 +2,7 @@
   "name": "pi-skillopt",
   "version": "0.1.0",
   "type": "module",
-  "description": "Optimize any agent SKILL.md against a Harbor eval/rollout substrate, with SkillOpt-style validation-gated edits. Bring a skill; the plugin generates the task pack and runs the loop.",
+  "description": "Autonomous SkillOpt loop for pi: an extension that optimizes a SKILL.md against Harbor rollouts, keeping only edits that beat a held-out score.",
   "keywords": [
     "pi-package",
     "pi",

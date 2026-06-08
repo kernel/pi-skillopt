@@ -1,65 +1,30 @@
+<div align="center">
+
 # pi-skillopt
+### Autonomous [SkillOpt](https://github.com/microsoft/SkillOpt) loop for pi
+**[Why](#why)** · **[Install](#install)** · **[Usage](#usage)** · **[How it works](#how-it-works)**
 
-### Optimize any agent `SKILL.md` against a Harbor eval substrate — the [SkillOpt](https://github.com/microsoft/SkillOpt) way
+</div>
 
-*Bring a skill. The plugin generates the task pack, rolls the skill out on real tasks via [Harbor](https://github.com/harbor-framework/harbor), reflects on failures, applies bounded edits, and keeps an edit only if it strictly improves a held-out score.*
+*Bring a skill. pi-skillopt generates the task pack, rolls the skill out on real tasks via [Harbor](https://github.com/harbor-framework/harbor), reflects on failures, applies bounded edits, and keeps an edit only if it strictly improves a held-out score.*
 
-A plugin for **[pi](https://pi.dev/)**. Inspired in structure by [pi-autoresearch](https://github.com/davebcn87/pi-autoresearch): a domain-agnostic **extension** provides the machinery, **skills** encode the workflow. Here the optimization target is a single skill document, the benchmark is a Harbor rollout, and "keep/revert" is SkillOpt's validation gate.
-
-> **Status: v0.** The loop/gate/splits/Harbor-seam/jsonl logic is real and unit-testable; the **skills are usable today** (they're just instructions an agent follows). The **Harbor seam is validated end-to-end against a live Harbor run on the e2b backend** — `run_rollout` builds the `JobConfig`, runs `harbor run --config`, and reads each trial's rewards from its `result.json`, producing correct `hard`/`soft` scores. Proven on `examples/hello-harbor` with both the `oracle` agent and a real **`claude-code`** agent (Opus 4.8) that installs itself in the sandbox, registers the injected skill, and uses it (outcome + adherence both 1.0). The **extension wiring is reconciled against the real `@mariozechner/pi-coding-agent` API** — it typechecks clean (`npm run typecheck`) and has an offline test suite (`npm test`: mock-API registration + gate/splits/harbor/compaction units, 25 tests) gated in CI. What's left is one live smoke session in pi to confirm the runtime fires the wired events and the agent drives the loop end to end.
+An extension for **[pi](https://pi.dev/)**. Inspired in structure by [pi-autoresearch](https://github.com/davebcn87/pi-autoresearch): a domain-agnostic **extension** provides the machinery, **skills** encode the workflow. The optimization target is a single skill document, the benchmark is a Harbor rollout, and "keep/revert" is SkillOpt's validation gate.
 
 ---
 
 ## Why
 
-[SkillOpt](https://arxiv.org/abs/2605.23904) showed you can "train" a frozen agent's `SKILL.md` like weights — propose edits from scored rollouts, accept only edits that beat a held-out selection score. But its repo is a research harness: to use it on *your* skill you must implement a dataset + rollout + scorer. Harbor already *is* that layer — it runs agents (Claude Code, Codex, …) in containers and returns verifier rewards. `pi-skillopt` is the glue, wrapped as a plugin you install instead of a framework you fork.
+[SkillOpt](https://arxiv.org/abs/2605.23904) showed you can "train" a frozen agent's `SKILL.md` like weights — propose edits from scored rollouts, accept only edits that beat a held-out selection score. But its repo is a research harness: to use it on *your* skill you must implement a dataset + rollout + scorer. Harbor already *is* that layer — it runs agents (Claude Code, Codex, …) in containers and returns verifier rewards. `pi-skillopt` is the glue — an extension you install, not a framework you fork.
 
 ## Install
 
-No npm publish required — pi installs packages straight from git or a local path:
-
 ```bash
-# from GitHub — private repo, so SSH (uses your configured keys):
 pi install git:git@github.com:kernel/pi-skillopt@main
-# HTTPS works too (needs a git credential for the private repo):
-pi install git:github.com/kernel/pi-skillopt@main
-
-# from a local checkout — best for development, no copy:
-git clone git@github.com:kernel/pi-skillopt && pi install ./pi-skillopt
-
-# try it for a single run without installing:
-pi -e git:git@github.com:kernel/pi-skillopt
 ```
 
-The git ref pins to a tag/commit/branch; `pi update` reconciles it. To share with a
-team, `pi install -l …` writes it to project settings (`.pi/settings.json`) and pi
-auto-installs on startup once the project is trusted. (`pi install npm:pi-skillopt`
-also works if it's ever published.)
+Rollouts run through the [Harbor](https://github.com/harbor-framework/harbor) CLI: `uv tool install harbor` (add a backend extra for a remote sandbox, e.g. `uv tool install 'harbor[e2b]'` + `export E2B_API_KEY=…`).
 
-Requires the Harbor CLI for rollouts: `uv tool install harbor`. For a remote
-backend (recommended — and the one this seam is validated against), install the
-extra and export your key, e.g. e2b: `uv tool install 'harbor[e2b]'` +
-`export E2B_API_KEY=…`.
-
-> **e2b gotchas (Harbor 0.13.x):** Harbor's e2b adapter hard-codes a 24-hour
-> sandbox lifetime, which the e2b **hobby tier rejects** (1-hour cap) with
-> `400: Timeout cannot be greater than 1 hours` — use a Pro-tier key, or cap
-> `timeout` in `harbor/environments/e2b.py`. Also, e2b's Dockerfile parser warns
-> `Unsupported instruction: COMMENT` on `#` comment lines — harmless, the
-> template still builds.
->
-> Two more that actually block runs (a Pro key alone doesn't fix them):
-> **`AgentSetupTimeoutError` after ~360s** — `claude-code` installs Node/npm/curl
-> inside the sandbox, and on a bare `ubuntu:24.04` base that exceeds the
-> agent-setup timeout; pre-bake `nodejs`/`npm`/`curl` into each task's
-> `environment/Dockerfile`. And a **template build-then-use race** —
-> `404: tag 'default' does not exist for template …` / `BuildException: build was
-> cancelled` — when many task templates build concurrently; pre-build/warm
-> templates, lower `n_concurrent_trials`, or raise the per-rollout timeout.
-
-## Use it
-
-You arrive with just a skill.
+## Usage
 
 ```
 /skill:skillopt-create
@@ -80,14 +45,14 @@ The agent walks you through:
 ## How it works
 
 ```
-┌────────────────────────────┐      ┌──────────────────────────────┐
+┌────────────────────────────┐      ┌───────────────────────────────┐
 │  Extension (generic infra) │      │  Skills (the workflow)        │
-│                            │      │                              │
-│  init_optimization         │◄─────│  skillopt-create   (set up)  │
+│                            │      │                               │
+│  init_optimization         │◄─────│  skillopt-create   (set up)   │
 │  run_rollout  ── harbor ──►│      │  skillopt-taskpack (make eval)│
-│  log_step  ── gate ──►keep │      │  skillopt-finalize (ship)    │
-│  widget · /skillopt · jsonl│      │                              │
-└────────────────────────────┘      └──────────────────────────────┘
+│  log_step  ── gate ──►keep │      │  skillopt-finalize (ship)     │
+│  widget · /skillopt · jsonl│      │                               │
+└────────────────────────────┘      └───────────────────────────────┘
 ```
 
 - **`run_rollout(split)`** runs the configured agent in the rollout env with the *current* skill mounted, over a split's tasks, and returns `hard`/`soft` scores + failing trajectories (the "gradient").
@@ -112,8 +77,7 @@ A run is **self-contained in the working directory** (where pi was launched). `i
 ## What's deliberately generic
 No assumptions about what the skill does. Skill, task pack, agent, model, backend, and verifiers are all user-supplied. `examples/hello-harbor/` runs the whole shape on a toy skill with zero domain code. `examples/reversible-migrations/` and `examples/jq-surgeon/` are harder skills that ship *without* a task pack, so they exercise `skillopt-taskpack` — deriving the tasks and verifiers from the skill itself.
 
-## Roadmap (v1+)
-- one live pi smoke session to confirm the runtime fires the wired events (idle auto-loop, compaction-resume, before-agent-start) and the agent drives the loop end to end (the wiring already typechecks against the real pi API and is unit-tested)
+## Roadmap
 - slow-update / meta-skill (epoch-boundary guidance into a protected region)
 - autonomous edit-budget control; parallel rollouts; a live `/skillopt export` dashboard
 - a separate optimizer model option (default keeps pi itself as the optimizer)
