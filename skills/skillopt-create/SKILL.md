@@ -38,7 +38,12 @@ Ask in this order, waiting for each answer before the next:
 1. **Which skill?** The path to the `SKILL.md` to optimize (the only file the loop edits). Look in the cwd first; if there's one obvious candidate, propose it — otherwise ask. Don't grab an unrelated SKILL.md just because it's nearby.
 2. **What does good look like?** What an agent should reliably accomplish with it, and any behaviors/gotchas the skill is meant to enforce.
 3. **Where do rollouts run?** The backend — default `docker`; alternatives `e2b`, `daytona`, `runloop`, `modal`. (One question, with the default offered.)
-4. **Which agent + model?** Default `claude-code` on a current model (e.g. `anthropic/claude-opus-4-8`). Other agents: `codex`, `pi`, `opencode`.
+4. **Which agent + model?** The agent is the CLI harness that runs each task in the sandbox with your skill loaded — **list the options for the user, don't just give the default**:
+   - common coding agents: **`claude-code`** (default, Anthropic) · `codex` (OpenAI) · `gemini-cli` (Google) · `opencode` · `cursor-cli` · `aider` · `goose` · `openhands` · `copilot-cli` · `qwen-coder` · `pi`
+   - **`oracle`** — runs each task's reference `solution/` instead of a model (free, no API key); use it to smoke-test the pipeline end-to-end before spending on a real agent.
+   - Harbor supports more (`terminus-2`, `devin`, `kimi-cli`, `cline-cli`, …) — offer the common ones and accept any valid Harbor agent name the user prefers.
+   
+   Then pick the **model** for that agent, e.g. `anthropic/claude-opus-4-8`, `openai/gpt-5.5`. (`oracle` needs no model.)
 5. **Credentials** — once you know the backend + agent, work out which keys are required and **check them yourself** with a shell command — don't ask the user to confirm something you can verify. Check presence only, never print a value, e.g. `for k in E2B_API_KEY ANTHROPIC_API_KEY; do [ -n "${!k}" ] && echo "$k set" || echo "$k MISSING"; done`.
    - **Backend key** (read by the Harbor CLI on the host, *not* injected into the sandbox, so it does NOT go in the config): `e2b` → `E2B_API_KEY`, `daytona` → `DAYTONA_API_KEY`, `runloop` → `RUNLOOP_API_KEY`, `modal` → `MODAL_TOKEN`. `docker`/local → none.
    - **Model-provider key** (passed *into* the sandbox for the rollout agent → add its name to `rollout.setup.env`): Anthropic / `claude-code` → `ANTHROPIC_API_KEY`; OpenAI / `codex` → `OPENAI_API_KEY`; etc.
