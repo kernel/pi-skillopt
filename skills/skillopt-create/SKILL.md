@@ -43,7 +43,7 @@ Ask in this order, waiting for each answer before the next:
    - **`oracle`** — runs each task's reference `solution/` instead of a model (free, no API key); use it to smoke-test the pipeline end-to-end before spending on a real agent.
    - Harbor supports more (`terminus-2`, `devin`, `kimi-cli`, `cline-cli`, …) — offer the common ones and accept any valid Harbor agent name the user prefers.
    
-   Then pick the **model** for that agent, e.g. `anthropic/claude-opus-4-8`, `openai/gpt-5.5`. (`oracle` needs no model.)
+   Then pick the **model** as `<provider>/<exact-model-id>`. Harbor passes the id straight to the provider (it only strips the `<provider>/` prefix), so it must be a **real, current** provider model id — **never an approximation or stale alias** (`haiku`, `claude-3-5-haiku-latest`, "gpt5" all fail and every rollout errors out). If the user names a model loosely (e.g. "haiku"), resolve it to the exact id and show it in the confirm step. Current Anthropic ids: `anthropic/claude-opus-4-8`, `anthropic/claude-sonnet-4-6`, `anthropic/claude-haiku-4-5`; e.g. `openai/gpt-5.5`. If unsure of the exact id, ask the user rather than guess. (`oracle` needs no model.)
 5. **Credentials** — once you know the backend + agent, work out which keys are required and **check them yourself** with a shell command — don't ask the user to confirm something you can verify. Check presence only, never print a value, e.g. `for k in E2B_API_KEY ANTHROPIC_API_KEY; do [ -n "${!k}" ] && echo "$k set" || echo "$k MISSING"; done`.
    - **Backend key** (read by the Harbor CLI on the host, *not* injected into the sandbox, so it does NOT go in the config): `e2b` → `E2B_API_KEY`, `daytona` → `DAYTONA_API_KEY`, `runloop` → `RUNLOOP_API_KEY`, `modal` → `MODAL_TOKEN`. `docker`/local → none.
    - **Model-provider key** (passed *into* the sandbox for the rollout agent → add its name to `rollout.setup.env`): Anthropic / `claude-code` → `ANTHROPIC_API_KEY`; OpenAI / `codex` → `OPENAI_API_KEY`; etc.
@@ -103,10 +103,11 @@ The task pack defines what "better" *means*, so it is never a detail to assume. 
 
 ## Step 3 — initialize and baseline
 
-1. `git checkout -b skillopt/<skill-name>-<date>` (so accepted snapshots are diffable).
-2. Write `skillopt.md` (template below) — the living session doc.
-3. `init_optimization` → `run_rollout('selection')` → `log_step` as the baseline (edit: "baseline").
-4. Also `run_rollout('train')` once to see where the skill actually fails.
+1. **Preflight the rollout tooling** (do this *before* any rollout so the first one doesn't fail): ensure the Harbor CLI **and the backend extra** are installed with `uv tool install 'harbor[<backend>]'` — idempotent, safe to run every session — e.g. `uv tool install 'harbor[e2b]'`. A missing backend extra is the classic "the first `run_rollout` errored" cause; this prevents it instead of probing after the fact.
+2. `git checkout -b skillopt/<skill-name>-<date>` (so accepted snapshots are diffable).
+3. Write `skillopt.md` (template below) — the living session doc.
+4. `init_optimization` → `run_rollout('selection')` → `log_step` as the baseline (edit: "baseline").
+5. Also `run_rollout('train')` once to see where the skill actually fails.
 
 **Call `init_optimization` exactly once.** If a session already exists it *resumes* (it won't reset your baseline) — never re-init mid-run to "reset". To genuinely start over, run `/skillopt clear` first. And never `run_rollout('test')` during the loop — it's blocked unless `skillopt-finalize` passes `final: true`.
 

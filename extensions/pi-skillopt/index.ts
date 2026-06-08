@@ -468,18 +468,23 @@ export default function skilloptExtension(pi: ExtensionAPI) {
       r.steps = allSteps;
       r.active = true;
 
-      // Plateau early-stop: if the best hasn't improved for a while, halt the loop.
+      // Plateau early-stop: halt if the best hasn't improved for a while. (r.plateaued
+      // may also already be set by a saturated selection rollout this turn — distinguish
+      // the two so the message names the real reason, not "no new best in 0 steps".)
       const sinceImproved = stepsSinceNewBest(allSteps);
-      if (sinceImproved >= PLATEAU_PATIENCE) {
+      const plateauByPatience = sinceImproved >= PLATEAU_PATIENCE;
+      if (plateauByPatience) {
         r.plateaued = true;
         cancelPendingResume(r);
       }
       updateWidget(ctx);
 
       const verb = outcome.action === "reject" ? "REJECTED (reverted)" : outcome.action === "accept_new_best" ? "ACCEPTED ★ new best" : "accepted";
-      const tail = r.plateaued
+      const tail = plateauByPatience
         ? `\n\nPLATEAU: no new best in ${sinceImproved} steps — STOP and run /skill:skillopt-finalize. To gain more, widen or harden the task pack rather than editing an already-saturated skill.`
-        : `\nContinue the loop.`;
+        : r.plateaued
+          ? `\n\nDONE: the selection split is saturated (at the ceiling — no headroom for the gate to reward). STOP and run /skill:skillopt-finalize; widen or harden the task pack if you want more.`
+          : `\nContinue the loop.`;
       return result(
         `Step ${stepNum}: ${verb}. selection ${metric}=${pct(metric === "soft" ? params.sel_soft ?? 0 : params.sel_hard)} · best ${pct(outcome.bestScore)} · budget ${budget}` +
           (entry.confidence !== null ? ` · conf ${entry.confidence.toFixed(1)}×` : ``) +
