@@ -22,12 +22,14 @@ You need the Harbor CLI (`uv tool install harbor`) and a working `docker`
 backend. From a pi session in this directory:
 
 ```
-/skill:skillopt-taskpack   # derive the tasks + verifiers from the skill
-/skill:skillopt-create     # then run the optimization loop
+/skill:skillopt-create     # set up the run — with no task pack yet, it leads into skillopt-taskpack
 ```
 
-Once the pack exists with `solution/solve.sh` files, you can smoke-test the
-pipeline for free by setting `"agent": "oracle"` in `skillopt.config.json` — the
-oracle agent runs each task's solution instead of a model, so every task scores
-1.0 and you can confirm the whole pipeline works before spending any model
-tokens. Switch the agent back to `claude-code` for a real run.
+`skillopt-create` walks you through the run config, then — because this example
+ships without a `tasks/` dir — hands off to `skillopt-taskpack` to derive the
+tasks and verifiers from the skill. Once the pack exists with `solution/solve.sh`
+files, you can smoke-test the pipeline for free by setting `"agent": "oracle"` in
+`skillopt.config.json` — the oracle agent runs each task's solution instead of a
+model, so every task scores 1.0 and you can confirm the whole pipeline works
+before spending any model tokens. Switch the agent back to `claude-code` for a
+real run.

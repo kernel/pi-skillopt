@@ -24,11 +24,12 @@ What's here:
 From a pi session in this directory:
 
 ```
-/skill:skillopt-taskpack   # derive tasks + reward verifiers from the skill
-/skill:skillopt-create     # then run the optimization loop
+/skill:skillopt-create     # set up the run — with no task pack yet, it leads into skillopt-taskpack
 ```
 
-`skillopt-taskpack` reads the SKILL.md and generates tasks with automated
-verifiers from the failure modes in the `## Gotchas` section. Once the task
-pack has `solution/solve.sh` files, set `"agent": "oracle"` in
-`skillopt.config.json` to do a dry run before using a real model.
+`skillopt-create` walks you through the run config, then — because this example
+ships without a `tasks/` dir — hands off to `skillopt-taskpack`, which reads the
+SKILL.md and derives tasks with automated verifiers from the failure modes in
+the `## Gotchas` section. Once the pack has `solution/solve.sh` files, set
+`"agent": "oracle"` in `skillopt.config.json` to do a free dry run before using
+a real model.
