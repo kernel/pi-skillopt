@@ -19,7 +19,7 @@ An extension for **[pi](https://pi.dev/)**. Inspired in structure by [pi-autores
 ## Install
 
 ```bash
-pi install git:git@github.com:kernel/pi-skillopt@main
+pi install git:git@github.com:kernel/pi-skillopt
 ```
 
 Rollouts run through the [Harbor](https://github.com/harbor-framework/harbor) CLI: `uv tool install harbor` (add a backend extra for a remote sandbox, e.g. `uv tool install 'harbor[e2b]'` + `export E2B_API_KEY=…`).
